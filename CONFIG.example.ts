@@ -1,4 +1,4 @@
-// copy the cookie header from dev tools on cohost.org
+// copy the cookie header from dev tools on cohost.org. this is used to log in, so don't share it
 export const COOKIE = 'connect.sid=adhjsakfahdsfjkash';
 
 // load all of your own posts
@@ -10,4 +10,4 @@ export const POSTS = [
 ];
 
 // some CSS posts contain external images that load forever
-export const DO_NOT_FETCH_DOMAINS = ['an-external-domain-that-breaks-the-program.com'];
+export const DO_NOT_FETCH_HOSTNAMES = ['an-external-domain-that-breaks-the-program.com'];
