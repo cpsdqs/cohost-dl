@@ -8,6 +8,27 @@ import {
 import { DO_NOT_FETCH_HOSTNAMES } from "./CONFIG.ts";
 
 const USER_AGENT = "cohost-dl/1.0";
+const MAX_FILE_NAME_LENGTH_UTF8 = 250;
+
+export function splitTooLongFileName(filePath: string): string {
+    let dirname = path.dirname(filePath);
+    let filename = path.basename(filePath);
+
+    while (new TextEncoder().encode(filename).byteLength > MAX_FILE_NAME_LENGTH_UTF8) {
+        let firstBit = '';
+        let rest = filename;
+        while (new TextEncoder().encode(firstBit).byteLength < MAX_FILE_NAME_LENGTH_UTF8) {
+            const item = rest[Symbol.iterator]().next().value;
+            firstBit += item;
+            rest = rest.substring(item.length);
+        }
+
+        dirname = path.join(dirname, firstBit);
+        filename = rest;
+    }
+
+    return path.join(dirname, filename);
+}
 
 export class CohostContext {
     /** cookie header */
@@ -60,7 +81,7 @@ export class CohostContext {
         } else if (url.protocol === "https:" && !DO_NOT_FETCH_HOSTNAMES.includes(url.hostname)) {
             return {
                 fetch: urlString,
-                filePath: `rc/external/${url.host}${url.pathname}${url.search}`,
+                filePath: splitTooLongFileName(`rc/external/${url.host}${url.pathname}${url.search}`),
                 canFail: true,
             };
         } else {
