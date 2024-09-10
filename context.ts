@@ -103,6 +103,19 @@ export class CohostContext {
         }
     }
 
+    async probablyHasFileForPostURL(url: string): Promise<boolean> {
+        const match = url.match(/^https:\/\/cohost[.]org\/([^\/]+)\/(\d+)-/);
+        if (!match) return false;
+        const [, projectHandle, id] = match;
+
+        const projectDir = path.join(this.rootDir, projectHandle);
+        for await (const item of Deno.readDir(projectDir)) {
+            if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) return true;
+        }
+
+        return false;
+    }
+
     async readJson(filePath: string): Promise<object> {
         const fullPath = path.join(this.rootDir, filePath);
 
