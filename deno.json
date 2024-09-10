@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@b-fuze/deno-dom": "jsr:@b-fuze/deno-dom@^0.1.48",
+    "@std/path": "jsr:@std/path@^1.0.4"
+  }
+}
