@@ -1,5 +1,5 @@
 import { COOKIE, POSTS, PROJECTS, SKIP_POSTS, DATA_PORTABILITY_ARCHIVE_PATH } from "./CONFIG.ts";
-import { CohostContext } from "./context.ts";
+import { CohostContext, POST_URL_REGEX } from "./context.ts";
 import { loadAllLikedPosts } from "./likes.ts";
 import { filePathForPost, loadPostPage } from "./post-page.ts";
 import { loadAllProjectPosts } from "./project.ts";
@@ -45,9 +45,9 @@ const ctx = new CohostContext(COOKIE, "out");
     const likedPosts = await ctx.readJson("liked.json") as IPost[];
     const projectPosts = await Promise.all(
         PROJECTS.map((handle) => ctx.readJson(`${handle}/posts.json`)),
-    ) as IPost[];
+    ) as IPost[][];
 
-    for (const post of [...likedPosts, ...projectPosts]) {
+    for (const post of [...likedPosts, ...projectPosts.flatMap(x => x)]) {
         if (SKIP_POSTS.includes(post.postId)) continue;
 
         const filePath = filePathForPost(post);
@@ -76,6 +76,9 @@ const ctx = new CohostContext(COOKIE, "out");
 
     for (const post of [...POSTS, ...dpaPostURLs]) {
         if (await ctx.probablyHasFileForPostURL(post)) continue;
+
+        const probablyThePostId = +(post.match(POST_URL_REGEX)?.[2] || '');
+        if (SKIP_POSTS.includes(probablyThePostId)) continue;
 
         console.log(`~~ loading additional post ${post}`);
         await loadPostPage(ctx, post);

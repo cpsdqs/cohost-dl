@@ -30,6 +30,8 @@ export function splitTooLongFileName(filePath: string): string {
     return path.join(dirname, filename);
 }
 
+export const POST_URL_REGEX = /^https:\/\/cohost[.]org\/([^\/]+)\/(\d+)-/;
+
 export class CohostContext {
     /** cookie header */
     cookie: string;
@@ -104,7 +106,7 @@ export class CohostContext {
     }
 
     async probablyHasFileForPostURL(url: string): Promise<boolean> {
-        const match = url.match(/^https:\/\/cohost[.]org\/([^\/]+)\/(\d+)-/);
+        const match = url.match(POST_URL_REGEX);
         if (!match) return false;
         const [, projectHandle, id] = match;
 
