@@ -30,7 +30,7 @@ export function splitTooLongFileName(filePath: string): string {
     return path.join(dirname, filename);
 }
 
-export const POST_URL_REGEX = /^https:\/\/cohost[.]org\/([^\/]+)\/(\d+)-/;
+export const POST_URL_REGEX = /^https:\/\/cohost[.]org\/([^\/]+)\/post\/(\d+)-/;
 
 export class CohostContext {
     /** cookie header */
@@ -121,9 +121,13 @@ export class CohostContext {
         if (!match) return false;
         const [, projectHandle, id] = match;
 
-        const projectDir = this.getCleanPath(projectHandle);
-        for await (const item of Deno.readDir(projectDir)) {
-            if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) return true;
+        const projectDir = path.join(this.getCleanPath(projectHandle), 'post');
+        try {
+            for await (const item of Deno.readDir(projectDir)) {
+                if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) return true;
+            }
+        } catch {
+            // readDir failed - probably because the directory doesn't exist
         }
 
         return false;
