@@ -37,9 +37,9 @@ async function loadResources(
         },
     );
 
-    const loadImages = [...document.querySelectorAll("img")].map(
-        async (img) => {
-            const src = img.getAttribute("src");
+    const loadSrcElements = [...document.querySelectorAll("script, img, audio")].map(
+        async (el) => {
+            const src = el.getAttribute("src");
 
             const resolvedSrc = src ? new URL(src, urlBase) : null;
 
@@ -48,13 +48,19 @@ async function loadResources(
                     resolvedSrc.toString(),
                 );
                 if (filePath) {
-                    img.setAttribute("src", encodeURI(filePathBase + filePath));
-                    img.removeAttribute("srcset");
+                    el.setAttribute("src", encodeURI(filePathBase + filePath));
+                    el.removeAttribute("srcset");
+
+                    if (el.tagName === "AUDIO") {
+                        // add controls, because JS playback doesn't work at the moment
+                        el.setAttribute("controls", "");
+                    }
                 }
             }
         },
     );
-    await Promise.all([...loadStylesheets, ...loadImages]);
+
+    await Promise.all([...loadStylesheets, ...loadSrcElements]);
 
     const visit = async (el: Element) => {
         const styleAttr = el.getAttribute("style");
@@ -95,7 +101,12 @@ export function filePathForPost(post: IPost): string {
 }
 
 export async function loadPostPage(ctx: CohostContext, url: string) {
-    const document = await ctx.getDocument(url);
+    // it's kind of an accident that we also store the original file (it's a <link rel="canonical">),
+    // but we might as well repurpose it here as a cache mechanism
+    const cachedFilePath = await ctx.getCachedFileForPostURL(url);
+    const cachedOriginalPath = cachedFilePath?.replace(/[.]html$/, '');
+
+    const document = await ctx.getDocument(url, cachedOriginalPath);
 
     await loadResources(ctx, document, url, FROM_POST_PAGE_TO_ROOT);
 
@@ -109,8 +120,87 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
         postId: pageState.state.postId,
     });
 
+    // if the post is behind a CW, it will probably not render on the post page.
+    // we should load resources for those as well
+    await loadPostResources(ctx, post);
+
     await ctx.write(
         filePathForPost(post),
         "<!DOCTYPE html>\n" + document.documentElement!.outerHTML,
     );
+}
+
+interface ASTPosition {
+    line: number;
+    column: number;
+    offset: number;
+}
+
+interface ASTPositionRange {
+    start: ASTPosition;
+    end: ASTPosition;
+}
+
+interface ASTNodeElement {
+    type: "element";
+    tagName: string;
+    properties: Record<string, string>;
+    position: ASTPositionRange;
+    children: ASTNode[];
+}
+
+interface ASTNodeText {
+    type: "text";
+    value: string;
+    position: ASTPositionRange;
+}
+
+interface ASTNodeRoot {
+    type: "root";
+    children: ASTNode[];
+    data: { quirksMode: boolean };
+    position: ASTPositionRange;
+}
+
+type ASTNode = ASTNodeRoot | ASTNodeElement | ASTNodeText;
+
+export async function loadPostResources(ctx: CohostContext, post: IPost) {
+    await Promise.all(post.blocks.map(async block => {
+        if (block.type === "attachment") {
+            await ctx.loadResourceToFile(block.attachment.fileURL);
+        }
+    }));
+
+    for (const span of post.astMap.spans) {
+        const ast = JSON.parse(span.ast);
+
+        const visit = async (node: ASTNode) => {
+            if ("properties" in node) {
+                if ("style" in node.properties) {
+                    const tree = cssParse(node.properties.style, {
+                        context: "declarationList",
+                    });
+
+                    const nodes: { value: string }[] = [];
+                    cssWalk(tree, (node: { type: string; value: string }) => {
+                        if (node.type === "Url") {
+                            nodes.push(node);
+                        }
+                    });
+
+                    await Promise.all(nodes.map(async (node) => {
+                        const resolved = new URL(node.value, post.singlePostPageUrl);
+                        if (resolved.protocol !== "https:") return;
+                        await ctx.loadResourceToFile(resolved.toString());
+                    }));
+                }
+            }
+
+            if ("children" in node) {
+                await Promise.all(node.children.map(visit));
+            }
+        }
+
+        await visit(ast);
+    }
 }

@@ -116,27 +116,32 @@ export class CohostContext {
         }
     }
 
-    async probablyHasFileForPostURL(url: string): Promise<boolean> {
+    async getCachedFileForPostURL(url: string): Promise<string | null> {
         const match = url.match(POST_URL_REGEX);
-        if (!match) return false;
+        if (!match) return null;
         const [, projectHandle, id] = match;
 
         const projectDir = path.join(this.getCleanPath(projectHandle), 'post');
         try {
             for await (const item of Deno.readDir(projectDir)) {
-                if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) return true;
+                if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) {
+                    return `${projectHandle}/post/${item.name}`;
+                }
             }
         } catch {
             // readDir failed - probably because the directory doesn't exist
         }
 
-        return false;
+        return null;
+    }
+
+    readText(filePath: string): Promise<string> {
+        const fullPath = this.getCleanPath(filePath);
+        return Deno.readTextFile(fullPath);
     }
 
     async readJson(filePath: string): Promise<object> {
-        const fullPath = this.getCleanPath(filePath);
-
-        return JSON.parse(await Deno.readTextFile(fullPath));
+        return JSON.parse(await this.readText(filePath));
     }
 
     async write(filePath: string, data: string | Uint8Array) {
@@ -225,8 +230,20 @@ export class CohostContext {
         return cssGenerate(tree);
     }
 
-    async getDocument(url: string): Promise<Document> {
-        const htmlString = await this.get(url).then((res) => res.text());
-        return new DOMParser().parseFromString(htmlString, "text/html");
+    async getDocument(url: string, orCachedPath?: string): Promise<Document> {
+        let htmlString: string | null = null;
+        if (orCachedPath) {
+            try {
+                htmlString = await this.readText(orCachedPath);
+            } catch {
+                // probably doesn't exist
+            }
+        }
+
+        if (htmlString === null) {
+            htmlString = await this.get(url).then((res) => res.text());
+        }
+
+        return new DOMParser().parseFromString(htmlString || "", "text/html");
     }
 }

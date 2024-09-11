@@ -38,11 +38,107 @@ export interface IProject {
     url: string;
 }
 
+export type ISmallProject = Pick<
+    IProject,
+    | "avatarPreviewURL"
+    | "avatarShape"
+    | "avatarURL"
+    | "displayName"
+    | "flags"
+    | "handle"
+    | "privacy"
+    | "projectId"
+>;
+
+export interface IPostBlockMarkdown {
+    type: "markdown";
+    markdown: {
+        content: string;
+    };
+}
+
+export interface IPostBlockAsk {
+    type: "ask";
+    ask: {
+        anon: boolean;
+        askId: string;
+        askingProject: ISmallProject;
+        content: string;
+        loggedIn: boolean;
+        sentAt: string;
+    };
+}
+
+export interface IAttachmentImage {
+    altText: string;
+    attachmentId: string;
+    fileURL: string;
+    height: string;
+    kind: "image";
+    previewURL: string;
+    width: string;
+}
+
+export interface IAttachmentAudio {
+    artist: string;
+    attachmentId: string;
+    fileURL: string;
+    kind: "audio";
+    previewURL: string;
+    title: string;
+}
+
+export type IAttachment = IAttachmentImage | IAttachmentAudio;
+
+export interface IPostBlockAttachment {
+    type: "attachment";
+    attachment: IAttachment;
+}
+
+export type IPostBlock =
+    | IPostBlockAttachment
+    | IPostBlockAsk
+    | IPostBlockMarkdown;
+
 export interface IPost {
+    astMap: {
+        readMoreIndex: number;
+        spans: {
+            ast: string;
+            startIndex: number;
+            endIndex: number;
+        }[];
+    };
+    blocks: IPostBlock[];
+    canPublish: boolean;
+    canShare: boolean;
+    commentsLocked: boolean;
+    cws: string[];
+    effectiveAdultContent: boolean;
     filename: string;
+    hasAnyContributorMuted: boolean;
+    hasCohostPlus: boolean;
+    headline: string;
+    isEditor: boolean;
+    isLiked: boolean;
+    limitedVisibilityReason: string;
+    numComments: number;
+    numSharedComments: number;
+    pinned: boolean;
+    plainTextBody: string;
+    postEditUrl: string;
     postId: number;
     postingProject: IProject;
+    publishedAt: string;
+    relatedProjects: IProject[];
+    responseToAskId: string | null;
+    shareOfPostId: number | null;
+    shareTree: IPost[];
+    sharesLocked: boolean;
     singlePostPageUrl: string;
+    state: number;
+    tags: string[];
+    transparentShareOfPostId: string | null;
 }
 
 export interface ITRPCQuery {
@@ -113,7 +209,10 @@ export class PageState<S> {
     }
 }
 
-export function getPageState<S>(document: Document, stateName?: string): PageState<S> {
+export function getPageState<S>(
+    document: Document,
+    stateName?: string,
+): PageState<S> {
     const state = JSON.parse(
         document.querySelector("script#__COHOST_LOADER_STATE__")?.innerHTML ??
             "",
@@ -122,5 +221,8 @@ export function getPageState<S>(document: Document, stateName?: string): PageSta
         document.querySelector("script#trpc-dehydrated-state")?.innerHTML ?? "",
     );
 
-    return new PageState<S>(stateName ? state[stateName] : state, trpcState.queries);
+    return new PageState<S>(
+        stateName ? state[stateName] : state,
+        trpcState.queries,
+    );
 }

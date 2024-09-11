@@ -1,10 +1,11 @@
 import { COOKIE, POSTS, PROJECTS, SKIP_POSTS, DATA_PORTABILITY_ARCHIVE_PATH } from "./CONFIG.ts";
 import { CohostContext, POST_URL_REGEX } from "./src/context.ts";
 import { loadAllLikedPosts } from "./src/likes.ts";
-import { filePathForPost, loadPostPage } from "./src/post-page.ts";
+import { loadPostPage, loadPostResources } from "./src/post-page.ts";
 import { loadAllProjectPosts } from "./src/project.ts";
 import { IPost } from "./src/model.ts";
 import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.ts";
+import { loadCohostSource } from "./src/cohost-source.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
 
@@ -40,6 +41,11 @@ const ctx = new CohostContext(COOKIE, "out");
     }
 }
 
+// javascript
+{
+    await loadCohostSource(ctx);
+}
+
 // Single post pages
 {
     const likedPosts = await ctx.readJson("liked.json") as IPost[];
@@ -47,14 +53,22 @@ const ctx = new CohostContext(COOKIE, "out");
         PROJECTS.map((handle) => ctx.readJson(`${handle}/posts.json`)),
     ) as IPost[][];
 
-    for (const post of [...likedPosts, ...projectPosts.flatMap(x => x)]) {
+    const allPosts = [
+        ...likedPosts,
+        ...projectPosts.flatMap(x => x),
+    ];
+
+    for (const post of allPosts) {
         if (SKIP_POSTS.includes(post.postId)) continue;
 
-        const filePath = filePathForPost(post);
-        if (!(await ctx.hasFile(filePath))) {
-            console.log(`~~ loading post ${post.singlePostPageUrl}`);
-            await loadPostPage(ctx, post.singlePostPageUrl);
-        }
+        console.log(`~~ processing post ${post.singlePostPageUrl}`);
+        await loadPostPage(ctx, post.singlePostPageUrl);
+    }
+
+    // it can happen that we've cached data for a post that is now a 404.
+    // I suppose we can try loading resources for those as well?
+    for (const post of allPosts) {
+        await loadPostResources(ctx, post);
     }
 
     const dpaPostURLs: string[] = [];
@@ -75,7 +89,7 @@ const ctx = new CohostContext(COOKIE, "out");
     }
 
     for (const post of [...POSTS, ...dpaPostURLs]) {
-        if (await ctx.probablyHasFileForPostURL(post)) continue;
+        if (await ctx.getCachedFileForPostURL(post)) continue;
 
         const probablyThePostId = +(post.match(POST_URL_REGEX)?.[2] || '');
         if (SKIP_POSTS.includes(probablyThePostId)) continue;
