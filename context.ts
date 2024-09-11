@@ -95,8 +95,15 @@ export class CohostContext {
 
     pendingResources = new Map<string, Promise<string | null>>();
 
+    /** Ensure a valid path on disk relative to the root directory */
+    getCleanPath(filePath: string): string {
+        // replace illegal characters for windows paths
+        const cleanFilePath = filePath.replace(/[?%*:|"<>]/g, '-');
+        return path.join(this.rootDir, cleanFilePath);
+    }
+
     async hasFile(filePath: string): Promise<boolean> {
-        const fullPath = path.join(this.rootDir, filePath);
+        const fullPath = this.getCleanPath(filePath);
         try {
             await Deno.stat(fullPath);
             return true;
@@ -110,7 +117,7 @@ export class CohostContext {
         if (!match) return false;
         const [, projectHandle, id] = match;
 
-        const projectDir = path.join(this.rootDir, projectHandle);
+        const projectDir = this.getCleanPath(projectHandle);
         for await (const item of Deno.readDir(projectDir)) {
             if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) return true;
         }
@@ -119,13 +126,13 @@ export class CohostContext {
     }
 
     async readJson(filePath: string): Promise<object> {
-        const fullPath = path.join(this.rootDir, filePath);
+        const fullPath = this.getCleanPath(filePath);
 
         return JSON.parse(await Deno.readTextFile(fullPath));
     }
 
     async write(filePath: string, data: string | Uint8Array) {
-        const fullPath = path.join(this.rootDir, filePath);
+        const fullPath = this.getCleanPath(filePath);
 
         await Deno.mkdir(path.dirname(fullPath), { recursive: true });
         await Deno.writeFile(
@@ -138,7 +145,7 @@ export class CohostContext {
         const props = this.propsForResourceURL(urlString);
         if (!props) return null;
 
-        const fullPath = path.join(this.rootDir, props.filePath);
+        const fullPath = this.getCleanPath(props.filePath);
 
         try {
             await Deno.stat(fullPath);
