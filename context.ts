@@ -97,9 +97,13 @@ export class CohostContext {
 
     /** Ensure a valid path on disk relative to the root directory */
     getCleanPath(filePath: string): string {
-        // replace illegal characters for windows paths
-        const cleanFilePath = filePath.replace(/[?%*:|"<>]/g, '-');
-        return path.join(this.rootDir, cleanFilePath);
+        if (Deno.build.os === "windows") {
+            // replace illegal characters for windows paths
+            const cleanFilePath = filePath.replace(/[?%*:|"<>]/g, '-');
+            return path.join(this.rootDir, cleanFilePath);
+        }
+
+        return path.join(this.rootDir, filePath);
     }
 
     async hasFile(filePath: string): Promise<boolean> {
