@@ -1,10 +1,10 @@
 import { COOKIE, POSTS, PROJECTS, SKIP_POSTS, DATA_PORTABILITY_ARCHIVE_PATH } from "./CONFIG.ts";
-import { CohostContext, POST_URL_REGEX } from "./context.ts";
-import { loadAllLikedPosts } from "./likes.ts";
-import { filePathForPost, loadPostPage } from "./post-page.ts";
-import { loadAllProjectPosts } from "./project.ts";
-import { IPost } from "./model.ts";
-import { readDataPortabilityArchiveItems } from "./data-portability-archive.ts";
+import { CohostContext, POST_URL_REGEX } from "./src/context.ts";
+import { loadAllLikedPosts } from "./src/likes.ts";
+import { filePathForPost, loadPostPage } from "./src/post-page.ts";
+import { loadAllProjectPosts } from "./src/project.ts";
+import { IPost } from "./src/model.ts";
+import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
 
