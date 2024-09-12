@@ -1,5 +1,6 @@
 import { CohostContext } from "./context.ts";
-import { IPost } from "./model.ts";
+import { IPost, IProject } from "./model.ts";
+import { rewriteMarkdownString } from "./markdown.ts";
 
 interface IProfilePostsRes {
     pagination: {
@@ -51,4 +52,43 @@ export async function loadAllProjectPosts(
     }
 
     return posts;
+}
+
+export async function rewriteProject(
+    ctx: CohostContext,
+    project: IProject,
+    base: string,
+): Promise<Record<string, string>> {
+    const rewrites: Record<string, string> = {};
+    const fields: (
+        | "avatarURL"
+        | "avatarPreviewURL"
+        | "headerURL"
+        | "headerPreviewURL"
+    )[] = [
+        "avatarURL",
+        "avatarPreviewURL",
+        "headerURL",
+        "headerPreviewURL",
+    ];
+
+    for (const field of fields) {
+        if (project[field]) {
+            const filePath = await ctx.loadResourceToFile(project[field]);
+            if (filePath) {
+                rewrites[project[field]] = base + filePath;
+                project[field] = base + filePath;
+            }
+        }
+    }
+
+    const { markdown, urls } = await rewriteMarkdownString(
+        ctx,
+        project.description,
+        base,
+    );
+    project.description = markdown;
+    Object.assign(rewrites, urls);
+
+    return rewrites;
 }

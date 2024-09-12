@@ -5,15 +5,26 @@ import {
     walk as cssWalk,
 } from "npm:css-tree@2.3.1";
 import { CohostContext } from "./context.ts";
-import { getPageState, IPost, IProject, savePageState } from "./model.ts";
+import {
+    COHOST_DL_USER,
+    getPageState,
+    IComment,
+    ILoggedIn,
+    IPost,
+    IProject,
+    savePageState,
+} from "./model.ts";
 import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
+import { rewritePost } from "./post.ts";
+import { rewriteProject } from "./project.ts";
+import { rewriteComment } from "./comment.ts";
 
 interface ISinglePostView {
     postId: number;
     project: IProject;
 }
 
-const FROM_POST_PAGE_TO_ROOT = "../../";
+export const FROM_POST_PAGE_TO_ROOT = "../../";
 
 async function loadResources(
     ctx: CohostContext,
@@ -154,29 +165,48 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
         "single-post-view",
     );
 
-    const { post } = pageState.query<{ post: IPost }>("posts.singlePost", {
-        handle: pageState.state.project.handle,
-        postId: pageState.state.postId,
-    });
+    const { post, comments } = pageState.query<
+        { post: IPost; comments: Record<string, IComment[]> }
+    >(
+        "posts.singlePost",
+        {
+            handle: pageState.state.project.handle,
+            postId: pageState.state.postId,
+        },
+    );
 
     // remove login info
-    pageState.updateQuery("login.loggedIn", null, {
-        activated: true,
-        deleteAfter: null,
-        email: "cohost-dl@localhost",
-        emailVerified: true,
-        emailVerifyCanceled: false,
-        loggedIn: true,
-        modMode: false,
-        projectId: 1,
-        readOnly: true,
-        twoFactorActive: true,
-        userId: 1,
-    }, true);
+    Object.assign(pageState.query<ILoggedIn>("login.loggedIn"), COHOST_DL_USER);
 
-    const rewriteData = await loadPostResources(ctx, post);
+    const rewriteData = await rewritePost(ctx, post, FROM_POST_PAGE_TO_ROOT);
 
-    for (const [k, v] of Object.entries(pageRewrites)) rewriteData.urls[k] = v;
+    const editedProjects = pageState.query<{ projects: IProject[] }>(
+        "projects.listEditedProjects",
+    );
+    for (const project of editedProjects.projects) {
+        Object.assign(
+            rewriteData.urls,
+            await rewriteProject(ctx, project, FROM_POST_PAGE_TO_ROOT),
+        );
+    }
+
+    Object.assign(
+        rewriteData.urls,
+        await rewriteProject(
+            ctx,
+            pageState.state.project,
+            FROM_POST_PAGE_TO_ROOT,
+        ),
+    );
+
+    for (const comment of Object.values(comments).flatMap((x) => x)) {
+        Object.assign(
+            rewriteData.urls,
+            await rewriteComment(ctx, comment, FROM_POST_PAGE_TO_ROOT),
+        );
+    }
+
+    Object.assign(rewriteData.urls, pageRewrites);
 
     const rewriteScript = document.createElement("script");
     rewriteScript.setAttribute("type", "application/json");
@@ -190,141 +220,4 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
         filePathForPost(post),
         "<!DOCTYPE html>\n" + document.documentElement!.outerHTML,
     );
-}
-
-interface ASTPosition {
-    line: number;
-    column: number;
-    offset: number;
-}
-
-interface ASTPositionRange {
-    start: ASTPosition;
-    end: ASTPosition;
-}
-
-interface ASTNodeElement {
-    type: "element";
-    tagName: string;
-    properties: Record<string, string>;
-    position: ASTPositionRange;
-    children: ASTNode[];
-}
-
-interface ASTNodeText {
-    type: "text";
-    value: string;
-    position: ASTPositionRange;
-}
-
-interface ASTNodeRoot {
-    type: "root";
-    children: ASTNode[];
-    data: { quirksMode: boolean };
-    position: ASTPositionRange;
-}
-
-type ASTNode = ASTNodeRoot | ASTNodeElement | ASTNodeText;
-
-interface PostRewriteData {
-    base: string;
-    urls: Record<string, string>;
-}
-
-export async function loadPostResources(
-    ctx: CohostContext,
-    post: IPost,
-): Promise<PostRewriteData> {
-    const rewriteData: PostRewriteData = {
-        base: post.singlePostPageUrl,
-        urls: {},
-    };
-
-    await Promise.all(post.blocks.map(async (block) => {
-        if (block.type === "attachment") {
-            const filePath = await ctx.loadResourceToFile(
-                block.attachment.fileURL,
-            );
-            if (filePath) {
-                const url = FROM_POST_PAGE_TO_ROOT + filePath;
-                rewriteData.urls[block.attachment.fileURL] = url;
-                block.attachment.fileURL = url;
-                block.attachment.previewURL = url;
-            }
-        }
-    }));
-
-    for (const span of post.astMap.spans) {
-        const ast = JSON.parse(span.ast);
-
-        const process = async (node: ASTNode) => {
-            if ("properties" in node) {
-                if ("style" in node.properties) {
-                    const tree = cssParse(node.properties.style, {
-                        context: "declarationList",
-                    });
-
-                    const nodes: { value: string }[] = [];
-                    cssWalk(tree, (node: { type: string; value: string }) => {
-                        if (node.type === "Url") {
-                            nodes.push(node);
-                        }
-                    });
-
-                    let mutated = false;
-                    await Promise.all(nodes.map(async (node) => {
-                        const resolved = new URL(
-                            node.value,
-                            post.singlePostPageUrl,
-                        );
-                        if (resolved.protocol !== "https:") return;
-
-                        const filePath = await ctx.loadResourceToFile(
-                            resolved.toString(),
-                        );
-                        if (filePath) {
-                            const url = FROM_POST_PAGE_TO_ROOT + filePath;
-                            rewriteData.urls[node.value] = url;
-                            node.value = url;
-                            mutated = true;
-                        }
-                    }));
-
-                    if (mutated) {
-                        node.properties.style = cssGenerate(tree);
-                    }
-                }
-
-                if (
-                    ["img", "audio", "video"].includes(node.tagName) &&
-                    node.properties.src
-                ) {
-                    const resolved = new URL(
-                        node.properties.src,
-                        post.singlePostPageUrl,
-                    );
-                    if (resolved.protocol === "https:") {
-                        const filePath = await ctx.loadResourceToFile(
-                            resolved.toString(),
-                        );
-                        if (filePath) {
-                            const url = FROM_POST_PAGE_TO_ROOT + filePath;
-                            rewriteData.urls[node.properties.src] = url;
-                            node.properties.src = url;
-                        }
-                    }
-                }
-            }
-
-            if ("children" in node) {
-                node.children = await Promise.all(node.children.map(process));
-            }
-
-            return node;
-        };
-
-        span.ast = JSON.stringify(await process(ast));
-    }
-
-    return rewriteData;
 }

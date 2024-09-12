@@ -1,12 +1,13 @@
 import { COOKIE, POSTS, PROJECTS, SKIP_POSTS, DATA_PORTABILITY_ARCHIVE_PATH } from "./CONFIG.ts";
 import { CohostContext, POST_URL_REGEX } from "./src/context.ts";
 import { loadAllLikedPosts } from "./src/likes.ts";
-import { loadPostPage, loadPostResources } from "./src/post-page.ts";
+import { loadPostPage } from "./src/post-page.ts";
 import { loadAllProjectPosts } from "./src/project.ts";
 import { IPost } from "./src/model.ts";
 import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.ts";
 import { loadCohostSource } from "./src/cohost-source.ts";
 import { generatePostPageScript } from "./src/post-page-script.ts";
+import { rewritePost } from "./src/post.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
 
@@ -70,7 +71,7 @@ const ctx = new CohostContext(COOKIE, "out");
     // it can happen that we've cached data for a post that is now a 404.
     // I suppose we can try loading resources for those as well?
     for (const post of allPosts) {
-        await loadPostResources(ctx, post);
+        await rewritePost(ctx, post);
     }
 
     const dpaPostURLs: string[] = [];

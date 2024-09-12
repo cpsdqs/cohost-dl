@@ -261,3 +261,52 @@ export function savePageState(document: Document, state: PageState<unknown>) {
     document.querySelector("script#trpc-dehydrated-state")!.innerHTML = JSON
         .stringify(state.trpcState);
 }
+
+type CommentPermission = 'allowed' | 'not-allowed';
+
+interface ICommentData {
+    body: string;
+    children: IComment[];
+    commentId: string;
+    deleted: boolean;
+    hasCohostPlus: boolean;
+    hidden: boolean;
+    inReplyTo: string | null;
+    postId: number;
+    postedAtISO: string;
+}
+
+export interface IComment {
+    canEdit: CommentPermission;
+    canHide: CommentPermission;
+    canInteract: CommentPermission;
+    comment: ICommentData | null;
+    poster: IProject | null;
+}
+
+export interface ILoggedIn {
+    activated: boolean;
+    deleteAfter: string | null;
+    email: string;
+    emailVerified: boolean;
+    emailVerifyCanceled: boolean;
+    loggedIn: boolean;
+    modMode: boolean;
+    projectId: number;
+    readOnly: boolean;
+    twoFactorActive: boolean;
+    userId: number;
+}
+
+export const COHOST_DL_USER: Omit<ILoggedIn, 'projectId'> = {
+    activated: true,
+    deleteAfter: null,
+    email: "cohost-dl@localhost",
+    emailVerified: true,
+    emailVerifyCanceled: false,
+    loggedIn: true,
+    modMode: false,
+    readOnly: false,
+    twoFactorActive: true,
+    userId: 0,
+};

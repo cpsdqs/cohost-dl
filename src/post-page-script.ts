@@ -876,6 +876,18 @@ const PATCHES: Record<string, Patch[]> = {
                 "get HOME_URL() { return new URL('../..', location.href).toString() } _doNothing() {",
         },
     ],
+    "preact/components/posts/blocks/attachments/audio.tsx": [
+        {
+            find: "pathEntries = new URL(block.attachment.fileURL)",
+            replace: "pathEntries = new URL(block.attachment.fileURL, location.href)",
+        }
+    ],
+    "preact/components/partials/project-avatar.tsx": [
+        {
+            find: "parsedSrc = new URL(src)",
+            replace: "parsedSrc = new URL(src, location.href)",
+        }
+    ],
     "preact/hooks/data-loaders.ts": [
         {
             find: "refetchInterval: 1000 * 30,",
