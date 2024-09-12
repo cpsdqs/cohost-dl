@@ -5,8 +5,6 @@ import sucrase from "npm:@rollup/plugin-sucrase";
 import * as path from "jsr:@std/path";
 import { CohostContext } from "./context.ts";
 
-const DEVELOPMENT = false;
-
 import npmEntitiesDecode from "npm:entities/lib/maps/decode.json" with {
     type: "json",
 };
@@ -762,9 +760,7 @@ const header = `if (!window.define) {
         });
     };
 
-    window.process = { env: { NODE_ENV: '${
-    DEVELOPMENT ? "development" : "production"
-}' } };
+    window.process = { env: { NODE_ENV: 'production' } };
 }
 `;
 
@@ -889,25 +885,6 @@ export async function generatePostPageScript(
                     return null;
                 },
                 async resolveId(originalId, importer) {
-                    if (DEVELOPMENT) {
-                        const id = originalId;
-                        if (id === "react") {
-                            return "tmp/react.development.js";
-                        }
-                        if (id === "react-dom") {
-                            return "tmp/react-dom.development.js";
-                        }
-                        if (id === "react-dom/server") {
-                            return "tmp/react-dom-server-legacy.browser.development.js";
-                        }
-                        if (id === "react-is") {
-                            return "tmp/react-is.development.js";
-                        }
-                        if (id === "scheduler") {
-                            return "tmp/scheduler.development.js";
-                        }
-                    }
-
                     let resolved: string | null = null;
 
                     let id = originalId;
@@ -1027,12 +1004,6 @@ export async function generatePostPageScript(
                         MISSING_FILES[id] &&
                         importer?.includes(MISSING_FILES[id].importer)
                     ) {
-                        if (DEVELOPMENT) {
-                            if (id === "./factoryWithTypeCheckers") {
-                                return "tmp/factoryWithTypeCheckers.js";
-                            }
-                        }
-
                         return `@internal/missing ${id}`;
                     }
 
@@ -1066,9 +1037,7 @@ export async function generatePostPageScript(
                 },
             },
             replace({
-                "process.env.NODE_ENV": DEVELOPMENT
-                    ? "'development'"
-                    : "'production'",
+                "process.env.NODE_ENV": "'production'",
                 preventAssignment: true,
             }),
             commonjs(),
