@@ -1,6 +1,17 @@
 {
   "imports": {
     "@b-fuze/deno-dom": "jsr:@b-fuze/deno-dom@^0.1.48",
-    "@std/path": "jsr:@std/path@^1.0.4"
+    "@babel/plugin-transform-class-properties": "npm:@babel/plugin-transform-class-properties@^7.25.4",
+    "@emoji-mart/data": "npm:@emoji-mart/data@^1.2.1",
+    "@rollup/plugin-commonjs": "npm:@rollup/plugin-commonjs@^26.0.1",
+    "@rollup/plugin-replace": "npm:@rollup/plugin-replace@^5.0.7",
+    "@rollup/plugin-sucrase": "npm:@rollup/plugin-sucrase@^5.0.2",
+    "@std/path": "jsr:@std/path@^1.0.4",
+    "entities": "npm:entities@^2.2.0",
+    "remark-gfm": "npm:remark-gfm@^4.0.0",
+    "remark-parse": "npm:remark-parse@^11.0.0",
+    "remark-stringify": "npm:remark-stringify@^11.0.0",
+    "rollup": "npm:rollup@^4.21.2",
+    "unified": "npm:unified@^11.0.5"
   }
 }

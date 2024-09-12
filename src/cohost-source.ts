@@ -13,7 +13,8 @@ interface ISourceMap {
     names: string[];
 }
 
-export async function loadCohostSource(ctx: CohostContext) {
+/** Loads cohost frontend source and returns root path */
+export async function loadCohostSource(ctx: CohostContext): Promise<string> {
     const filePath = await ctx.loadResourceToFile(SAMPLE_POST_URL);
     const document = await ctx.getDocument(SAMPLE_POST_URL, filePath ?? undefined);
 
@@ -26,6 +27,7 @@ export async function loadCohostSource(ctx: CohostContext) {
     // TODO: use cached
 
     console.log(`~~ cohost source version ${siteVersion}`);
+    const rootDir = `~src/${siteVersion}`;
 
     const scriptFileSources = new Set<string>();
 
@@ -59,7 +61,7 @@ export async function loadCohostSource(ctx: CohostContext) {
                     if (!content) continue;
 
                     const urlPath = decodeURI(url.pathname).replace(/^\/+/, '');
-                    const filePath = `~src/${siteVersion}/${urlPath}`;
+                    const filePath = `${rootDir}/${urlPath}`;
 
                     await ctx.write(filePath, content);
                 }
@@ -74,7 +76,7 @@ export async function loadCohostSource(ctx: CohostContext) {
     // discover chunk list
     const allOtherScripts: string[] = [];
     {
-        const chunkIndexScript = await ctx.readText(`~src/${siteVersion}/webpack/runtime/get javascript chunk filename`);
+        const chunkIndexScript = await ctx.readText(`${rootDir}/webpack/runtime/get javascript chunk filename`);
 
         const NAMES_START = '"" + ({';
         const namesStart = chunkIndexScript.indexOf(NAMES_START);
@@ -98,4 +100,6 @@ export async function loadCohostSource(ctx: CohostContext) {
     for (const src of allOtherScripts) {
         await loadScript(src);
     }
+
+    return rootDir;
 }
