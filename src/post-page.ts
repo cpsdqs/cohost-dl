@@ -6,6 +6,7 @@ import {
 } from "npm:css-tree@2.3.1";
 import { CohostContext } from "./context.ts";
 import { getPageState, IPost, IProject } from "./model.ts";
+import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
 
 interface ISinglePostView {
     postId: number;
@@ -54,6 +55,10 @@ async function loadResources(
                     if (el.tagName === "AUDIO") {
                         // add controls, because JS playback doesn't work at the moment
                         el.setAttribute("controls", "");
+                    } else if (el.tagName === "SCRIPT") {
+                        // remove scripts
+                        el.setAttribute("data-original-src", el.getAttribute("src"));
+                        el.removeAttribute("src");
                     }
                 }
             }
@@ -109,6 +114,17 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
     const document = await ctx.getDocument(url, cachedOriginalPath);
 
     await loadResources(ctx, document, url, FROM_POST_PAGE_TO_ROOT);
+
+    const contentScript = document.createElement("script");
+    contentScript.setAttribute("src", FROM_POST_PAGE_TO_ROOT + POST_PAGE_SCRIPT_PATH);
+    contentScript.setAttribute("async", "");
+    document.body.append(contentScript);
+
+    for (const link of document.querySelectorAll("link")) {
+        if (link.getAttribute("rel") === "preload" && link.getAttribute("href")?.endsWith(".js")) {
+            link.remove();
+        }
+    }
 
     const pageState = getPageState<ISinglePostView>(
         document,

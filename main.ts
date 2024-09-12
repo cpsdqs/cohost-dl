@@ -6,8 +6,17 @@ import { loadAllProjectPosts } from "./src/project.ts";
 import { IPost } from "./src/model.ts";
 import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.ts";
 import { loadCohostSource } from "./src/cohost-source.ts";
+import { generatePostPageScript } from "./src/post-page-script.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
+
+const DEV_SCRIPT = true;
+
+if (DEV_SCRIPT) {
+    const dir = await loadCohostSource(ctx);
+    await generatePostPageScript(ctx, dir);
+    Deno.exit(0);
+}
 
 {
     // check that login actually worked
@@ -16,8 +25,8 @@ const ctx = new CohostContext(COOKIE, "out");
     );
     const loginState = await loginStateResponse.json();
     if (!loginState[0].result.data.loggedIn) {
-        throw new Error(
-            "Not logged in. Please update your cookie configuration",
+        console.error(
+            "warning:\nNot logged in. Please update your cookie configuration\n\n",
         );
     } else {
         console.log(`logged in as ${loginState[0].result.data.email}`);
@@ -43,7 +52,8 @@ const ctx = new CohostContext(COOKIE, "out");
 
 // javascript
 {
-    await loadCohostSource(ctx);
+    const dir = await loadCohostSource(ctx);
+    await generatePostPageScript(ctx, dir);
 }
 
 // Single post pages
