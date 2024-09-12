@@ -774,6 +774,71 @@ type Patch = PatchReplace;
 const REFETCH_NONE =
     "refetchInterval: false, refetchOnReconnect: false, refetchOnWindowFocus: false, refetchIntervalInBackground: false,";
 
+const IMPL_REWRITE_CDN_URLS = `
+import { generate as cssGenerate, parse as cssParse, walk as cssWalk } from "@internal/css-tree";
+function rewriteCdnUrls() {
+    const rewriteDataNode = document.getElementById('__cohost_dl_rewrite_data');
+    const rewriteData = rewriteDataNode ? JSON.parse(rewriteDataNode.innerHTML) : null;
+
+    function rewriteUrl(url) {
+        if (rewriteData?.urls?.[url]) return rewriteData.urls[url];
+        return null;
+    }
+
+    return function(tree) {
+        const process = (node) => {
+            if (node.properties?.style) {
+                let mutated = false;
+                const tree = cssParse(node.properties.style, { context: 'declarationList' });
+
+                const nodes: { value: string }[] = [];
+                cssWalk(tree, (node: { type: string; value: string }) => {
+                    if (node.type === "Url") {
+                        const resolved = new URL(node.value, rewriteData.base);
+                        const rewritten = rewriteUrl(resolved.toString());
+                        if (rewritten) {
+                            mutated = true;
+                            node.value = rewritten;
+                        }
+                    }
+                });
+
+                if (mutated) {
+                    node = { ...node, properties: { ...node.properties, style: cssGenerate(tree) } };
+                }
+            }
+
+            const props = ['href', 'src'];
+            for (const prop of props) {
+                if (node.properties?.[prop]) {
+                    const resolved = new URL(node.properties[prop], rewriteData.base);
+                    const rewritten = rewriteUrl(resolved.toString());
+                    if (rewritten) {
+                        node = { ...node, properties: { ...node.properties, [prop]: rewritten } };
+                    }
+                }
+            }
+            if (node.properties?.srcset) {
+                node = { ...node, properties: { ...node.properties } };
+                delete node.properties.srcset;
+            };
+
+            if (node.children) {
+                let mutated = false;
+                const newChildren = node.children.map(child => {
+                    const result = process(child);
+                    mutated = result !== child;
+                    return result;
+                });
+                if (mutated) return { ...node, children: newChildren };
+            }
+            return node;
+        };
+        return process(tree);
+    };
+}
+`;
+
 const PATCHES: Record<string, Patch[]> = {
     "client.tsx": [
         {
@@ -818,6 +883,12 @@ const PATCHES: Record<string, Patch[]> = {
             multi: true,
         },
     ],
+    "preact/hooks/use-image-optimizer.ts": [
+        {
+            find: "const parsedSrc = new URL(src);",
+            replace: "const parsedSrc = new URL(src, document.location.href);",
+        }
+    ],
     "preact/providers/user-info-provider.tsx": [
         {
             find: "refetchInterval: 15 * 1000,",
@@ -834,6 +905,26 @@ const PATCHES: Record<string, Patch[]> = {
                     "async function fetchHTTPResponse(opts, ac) { return new Promise(() => {});",
             },
         ],
+    "lib/markdown/post-rendering.tsx": [
+        {
+            find: "const markdownRenderStack =",
+            replace: `${IMPL_REWRITE_CDN_URLS}\nconst markdownRenderStack =`,
+        },
+        {
+            find: ".use(rehypeExternalLinks, {",
+            replace: ".use(rewriteCdnUrls).use(rehypeExternalLinks, {",
+        },
+    ],
+    "lib/markdown/other-rendering.ts": [
+        {
+            find: "const markdownRenderStackNoHTML =",
+            replace: `${IMPL_REWRITE_CDN_URLS}\nconst markdownRenderStackNoHTML =`,
+        },
+        {
+            find: ".use(rehypeSanitize, effectiveSchema)",
+            replace: ".use(rehypeSanitize, effectiveSchema).use(rewriteCdnUrls)",
+        },
+    ],
 };
 
 const POST_PAGE = `
@@ -845,6 +936,12 @@ export async function generatePostPageScript(
     srcDir: string,
 ) {
     console.log("compiling post page script");
+
+    const cssTreeSourcePath = await ctx.loadResourceToFile("https://esm.sh/v135/css-tree@2.3.1/es2022/css-tree.bundle.mjs");
+    if (!cssTreeSourcePath) {
+        throw new Error("could not load css-tree");
+    }
+    const cssTreeSource = await ctx.readText(cssTreeSourcePath);
 
     const extraFiles = Object.fromEntries(
         Object.entries(EXTRA_FILES).map((
@@ -899,6 +996,10 @@ export async function generatePostPageScript(
                     if (id === "@internal/nothing") return "";
 
                     if (id === `@internal/${entryName}`) return POST_PAGE;
+
+                    if (id === "@internal/css-tree") {
+                        return cssTreeSource;
+                    }
 
                     if (id.startsWith("@internal/missing ")) {
                         const missingId = id.split(" ")[1];

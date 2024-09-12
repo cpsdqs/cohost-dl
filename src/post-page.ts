@@ -5,7 +5,7 @@ import {
     walk as cssWalk,
 } from "npm:css-tree@2.3.1";
 import { CohostContext } from "./context.ts";
-import { getPageState, IPost, IProject } from "./model.ts";
+import { getPageState, IPost, IProject, savePageState } from "./model.ts";
 import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
 
 interface ISinglePostView {
@@ -20,7 +20,9 @@ async function loadResources(
     document: Document,
     urlBase: string,
     filePathBase: string,
-) {
+): Promise<Record<string, string>> {
+    const rewrites: Record<string, string> = {};
+
     const loadStylesheets = [...document.querySelectorAll("link")].map(
         async (link) => {
             const href = link.getAttribute("href");
@@ -32,38 +34,46 @@ async function loadResources(
                     resolvedHref.toString(),
                 );
                 if (filePath) {
-                    link.setAttribute("href", filePathBase + filePath);
+                    const url = filePathBase + filePath;
+                    link.setAttribute("href", url);
+                    rewrites[href!] = url;
                 }
             }
         },
     );
 
-    const loadSrcElements = [...document.querySelectorAll("script, img, audio")].map(
-        async (el) => {
-            const src = el.getAttribute("src");
+    const loadSrcElements = [...document.querySelectorAll("script, img, audio")]
+        .map(
+            async (el) => {
+                const src = el.getAttribute("src");
 
-            const resolvedSrc = src ? new URL(src, urlBase) : null;
+                const resolvedSrc = src ? new URL(src, urlBase) : null;
 
-            if (resolvedSrc?.protocol === "https:") {
-                const filePath = await ctx.loadResourceToFile(
-                    resolvedSrc.toString(),
-                );
-                if (filePath) {
-                    el.setAttribute("src", encodeURI(filePathBase + filePath));
-                    el.removeAttribute("srcset");
+                if (resolvedSrc?.protocol === "https:") {
+                    const filePath = await ctx.loadResourceToFile(
+                        resolvedSrc.toString(),
+                    );
+                    if (filePath) {
+                        const url = encodeURI(filePathBase + filePath);
+                        el.setAttribute("src", url);
+                        rewrites[src!] = url;
+                        el.removeAttribute("srcset");
 
-                    if (el.tagName === "AUDIO") {
-                        // add controls, because JS playback doesn't work at the moment
-                        el.setAttribute("controls", "");
-                    } else if (el.tagName === "SCRIPT") {
-                        // remove scripts
-                        el.setAttribute("data-original-src", el.getAttribute("src"));
-                        el.removeAttribute("src");
+                        if (el.tagName === "AUDIO") {
+                            // add controls, because JS playback doesn't work at the moment
+                            el.setAttribute("controls", "");
+                        } else if (el.tagName === "SCRIPT") {
+                            // remove scripts
+                            el.setAttribute(
+                                "data-original-src",
+                                el.getAttribute("src"),
+                            );
+                            el.removeAttribute("src");
+                        }
                     }
                 }
-            }
-        },
-    );
+            },
+        );
 
     await Promise.all([...loadStylesheets, ...loadSrcElements]);
 
@@ -99,6 +109,8 @@ async function loadResources(
     await Promise.all(
         [...document.querySelectorAll("[data-post-body][class]")].map(visit),
     );
+
+    return rewrites;
 }
 
 export function filePathForPost(post: IPost): string {
@@ -109,19 +121,30 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
     // it's kind of an accident that we also store the original file (it's a <link rel="canonical">),
     // but we might as well repurpose it here as a cache mechanism
     const cachedFilePath = await ctx.getCachedFileForPostURL(url);
-    const cachedOriginalPath = cachedFilePath?.replace(/[.]html$/, '');
+    const cachedOriginalPath = cachedFilePath?.replace(/[.]html$/, "");
 
     const document = await ctx.getDocument(url, cachedOriginalPath);
 
-    await loadResources(ctx, document, url, FROM_POST_PAGE_TO_ROOT);
+    const pageRewrites = await loadResources(
+        ctx,
+        document,
+        url,
+        FROM_POST_PAGE_TO_ROOT,
+    );
 
     const contentScript = document.createElement("script");
-    contentScript.setAttribute("src", FROM_POST_PAGE_TO_ROOT + POST_PAGE_SCRIPT_PATH);
+    contentScript.setAttribute(
+        "src",
+        FROM_POST_PAGE_TO_ROOT + POST_PAGE_SCRIPT_PATH,
+    );
     contentScript.setAttribute("async", "");
     document.body.append(contentScript);
 
     for (const link of document.querySelectorAll("link")) {
-        if (link.getAttribute("rel") === "preload" && link.getAttribute("href")?.endsWith(".js")) {
+        if (
+            link.getAttribute("rel") === "preload" &&
+            link.getAttribute("href")?.endsWith(".js")
+        ) {
             link.remove();
         }
     }
@@ -136,9 +159,32 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
         postId: pageState.state.postId,
     });
 
-    // if the post is behind a CW, it will probably not render on the post page.
-    // we should load resources for those as well
-    await loadPostResources(ctx, post);
+    // remove login info
+    pageState.updateQuery("login.loggedIn", null, {
+        activated: true,
+        deleteAfter: null,
+        email: "cohost-dl@localhost",
+        emailVerified: true,
+        emailVerifyCanceled: false,
+        loggedIn: true,
+        modMode: false,
+        projectId: 1,
+        readOnly: true,
+        twoFactorActive: true,
+        userId: 1,
+    }, true);
+
+    const rewriteData = await loadPostResources(ctx, post);
+
+    for (const [k, v] of Object.entries(pageRewrites)) rewriteData.urls[k] = v;
+
+    const rewriteScript = document.createElement("script");
+    rewriteScript.setAttribute("type", "application/json");
+    rewriteScript.setAttribute("id", "__cohost_dl_rewrite_data");
+    rewriteScript.innerHTML = JSON.stringify(rewriteData);
+    document.head.append(rewriteScript);
+
+    savePageState(document, pageState);
 
     await ctx.write(
         filePathForPost(post),
@@ -180,17 +226,38 @@ interface ASTNodeRoot {
 
 type ASTNode = ASTNodeRoot | ASTNodeElement | ASTNodeText;
 
-export async function loadPostResources(ctx: CohostContext, post: IPost) {
-    await Promise.all(post.blocks.map(async block => {
+interface PostRewriteData {
+    base: string;
+    urls: Record<string, string>;
+}
+
+export async function loadPostResources(
+    ctx: CohostContext,
+    post: IPost,
+): Promise<PostRewriteData> {
+    const rewriteData: PostRewriteData = {
+        base: post.singlePostPageUrl,
+        urls: {},
+    };
+
+    await Promise.all(post.blocks.map(async (block) => {
         if (block.type === "attachment") {
-            await ctx.loadResourceToFile(block.attachment.fileURL);
+            const filePath = await ctx.loadResourceToFile(
+                block.attachment.fileURL,
+            );
+            if (filePath) {
+                const url = FROM_POST_PAGE_TO_ROOT + filePath;
+                rewriteData.urls[block.attachment.fileURL] = url;
+                block.attachment.fileURL = url;
+                block.attachment.previewURL = url;
+            }
         }
     }));
 
     for (const span of post.astMap.spans) {
         const ast = JSON.parse(span.ast);
 
-        const visit = async (node: ASTNode) => {
+        const process = async (node: ASTNode) => {
             if ("properties" in node) {
                 if ("style" in node.properties) {
                     const tree = cssParse(node.properties.style, {
@@ -204,19 +271,60 @@ export async function loadPostResources(ctx: CohostContext, post: IPost) {
                         }
                     });
 
+                    let mutated = false;
                     await Promise.all(nodes.map(async (node) => {
-                        const resolved = new URL(node.value, post.singlePostPageUrl);
+                        const resolved = new URL(
+                            node.value,
+                            post.singlePostPageUrl,
+                        );
                         if (resolved.protocol !== "https:") return;
-                        await ctx.loadResourceToFile(resolved.toString());
+
+                        const filePath = await ctx.loadResourceToFile(
+                            resolved.toString(),
+                        );
+                        if (filePath) {
+                            const url = FROM_POST_PAGE_TO_ROOT + filePath;
+                            rewriteData.urls[node.value] = url;
+                            node.value = url;
+                            mutated = true;
+                        }
                     }));
+
+                    if (mutated) {
+                        node.properties.style = cssGenerate(tree);
+                    }
+                }
+
+                if (
+                    ["img", "audio", "video"].includes(node.tagName) &&
+                    node.properties.src
+                ) {
+                    const resolved = new URL(
+                        node.properties.src,
+                        post.singlePostPageUrl,
+                    );
+                    if (resolved.protocol === "https:") {
+                        const filePath = await ctx.loadResourceToFile(
+                            resolved.toString(),
+                        );
+                        if (filePath) {
+                            const url = FROM_POST_PAGE_TO_ROOT + filePath;
+                            rewriteData.urls[node.properties.src] = url;
+                            node.properties.src = url;
+                        }
+                    }
                 }
             }
 
             if ("children" in node) {
-                await Promise.all(node.children.map(visit));
+                node.children = await Promise.all(node.children.map(process));
             }
-        }
 
-        await visit(ast);
+            return node;
+        };
+
+        span.ast = JSON.stringify(await process(ast));
     }
+
+    return rewriteData;
 }

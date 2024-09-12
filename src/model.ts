@@ -182,17 +182,27 @@ function jsonEq(a: unknown, b: unknown): boolean {
 }
 
 export class PageState<S> {
-    state: S;
-    trpcQueries: ITRPCQuery[];
+    stateName: string;
+    loaderState: object;
+    trpcState: { queries: ITRPCQuery[] };
 
-    constructor(state: S, trpcQueries: ITRPCQuery[]) {
-        this.state = state;
-        this.trpcQueries = trpcQueries;
+    get state(): S {
+        return (this.loaderState as { [k: string]: S })[this.stateName];
+    }
+
+    constructor(
+        stateName: string,
+        loaderState: object,
+        trpcState: { queries: ITRPCQuery[] },
+    ) {
+        this.stateName = stateName;
+        this.loaderState = loaderState;
+        this.trpcState = trpcState;
     }
 
     query<T>(query: string, input?: object) {
-        const state = this.trpcQueries.find((item) =>
-            item.queryKey[0].join(".") === query &&
+        const state = this.trpcState.queries.find((item) =>
+            (item.queryKey[0]?.join?.(".") ?? item.queryKey[0]) === query &&
             jsonEq(input, item.queryKey[1].input)
         )?.state;
         if (!state) {
@@ -206,6 +216,23 @@ export class PageState<S> {
             );
         }
         return state.data as T;
+    }
+
+    updateQuery(
+        query: string,
+        input: object | null,
+        value: object,
+        ignoreIfNone = false,
+    ) {
+        const state = this.trpcState.queries.find((item) =>
+            (item.queryKey[0]?.join?.(".") ?? item.queryKey[0]) === query &&
+            jsonEq(input, item.queryKey[1].input)
+        )?.state;
+
+        if (state) state.data = value;
+        else if (!ignoreIfNone) {
+            throw new Error(`cannot update query ${query}: not found`);
+        }
     }
 }
 
@@ -222,7 +249,15 @@ export function getPageState<S>(
     );
 
     return new PageState<S>(
-        stateName ? state[stateName] : state,
-        trpcState.queries,
+        stateName ?? "",
+        state,
+        trpcState,
     );
+}
+
+export function savePageState(document: Document, state: PageState<unknown>) {
+    document.querySelector("script#__COHOST_LOADER_STATE__")!.innerHTML = JSON
+        .stringify(state.loaderState);
+    document.querySelector("script#trpc-dehydrated-state")!.innerHTML = JSON
+        .stringify(state.trpcState);
 }

@@ -91,12 +91,10 @@ const ctx = new CohostContext(COOKIE, "out");
     }
 
     for (const post of [...POSTS, ...dpaPostURLs]) {
-        if (await ctx.getCachedFileForPostURL(post)) continue;
-
         const probablyThePostId = +(post.match(POST_URL_REGEX)?.[2] || '');
         if (SKIP_POSTS.includes(probablyThePostId)) continue;
 
-        console.log(`~~ loading additional post ${post}`);
+        console.log(`~~ processing additional post ${post}`);
         await loadPostPage(ctx, post);
     }
 }
