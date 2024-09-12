@@ -10,14 +10,6 @@ import { generatePostPageScript } from "./src/post-page-script.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
 
-const DEV_SCRIPT = true;
-
-if (DEV_SCRIPT) {
-    const dir = await loadCohostSource(ctx);
-    await generatePostPageScript(ctx, dir);
-    Deno.exit(0);
-}
-
 {
     // check that login actually worked
     const loginStateResponse = await ctx.get(

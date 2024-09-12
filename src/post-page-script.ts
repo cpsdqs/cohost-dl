@@ -767,8 +767,12 @@ const header = `if (!window.define) {
 interface PatchReplace {
     find: string;
     replace: string;
+    multi?: boolean;
 }
 type Patch = PatchReplace;
+
+const REFETCH_NONE =
+    "refetchInterval: false, refetchOnReconnect: false, refetchOnWindowFocus: false, refetchIntervalInBackground: false,";
 
 const PATCHES: Record<string, Patch[]> = {
     "client.tsx": [
@@ -777,23 +781,24 @@ const PATCHES: Record<string, Patch[]> = {
             replace: "void setupApp();",
         },
         {
+            find: "const AsyncPage =",
+            replace:
+                "import singlePostViewPage from '@/client/preact/components/pages/single-post-view'; const AsyncPage =",
+        },
+        {
             find: "import(`@/client/preact/components/pages/${props.page}`)",
             replace: (() => {
-                const pages = [
-                    "single-post-view",
-                ];
+                const syncPages: Record<string, string> = {
+                    "single-post-view": "singlePostViewPage",
+                };
 
-                let out = "(() => {";
-                for (const page of pages) {
+                let out = "(() => {\n";
+                for (const [page, varName] of Object.entries(syncPages)) {
                     out += `if (props.page === ${JSON.stringify(page)}) {`;
-                    out += `return import(${
-                        JSON.stringify(
-                            `@/client/preact/components/pages/${page}`,
-                        )
-                    })`;
-                    out += `}`;
+                    out += `return Promise.resolve(${varName});`;
+                    out += `}\n`;
                 }
-                out += "throw new Error('unknown page: ' + props.page)";
+                out += "throw new Error('unknown page: ' + props.page)\n";
                 out += "})()";
                 return out;
             })(),
@@ -806,6 +811,29 @@ const PATCHES: Record<string, Patch[]> = {
                 "get HOME_URL() { return new URL('../..', location.href).toString() } _doNothing() {",
         },
     ],
+    "preact/hooks/data-loaders.ts": [
+        {
+            find: "refetchInterval: 1000 * 30,",
+            replace: REFETCH_NONE,
+            multi: true,
+        },
+    ],
+    "preact/providers/user-info-provider.tsx": [
+        {
+            find: "refetchInterval: 15 * 1000,",
+            replace: REFETCH_NONE,
+            multi: true,
+        },
+    ],
+    "node_modules/.pnpm/@trpc+client@10.40.0_@trpc+server@10.40.0/node_modules/@trpc/client/dist/httpUtils-f58ceda1.mjs":
+        [
+            {
+                find: "async function fetchHTTPResponse(opts, ac) {",
+                // never resolve. just stop making requests please
+                replace:
+                    "async function fetchHTTPResponse(opts, ac) { return new Promise(() => {});",
+            },
+        ],
 };
 
 const POST_PAGE = `
@@ -825,6 +853,12 @@ export async function generatePostPageScript(
     );
 
     const realSrcDir = await Deno.realPath(ctx.getCleanPath(srcDir));
+
+    try {
+        await Deno.remove(ctx.getCleanPath(DIST_PATH), { recursive: true });
+    } catch {
+        // not important
+    }
 
     const npmPackages: Record<string, string> = {};
 
@@ -1018,15 +1052,25 @@ export async function generatePostPageScript(
                     if (PATCHES[id]) {
                         for (const patch of PATCHES[id]) {
                             if ("find" in patch) {
-                                const index = code.indexOf(patch.find);
-                                if (index === -1) {
-                                    throw new Error(
-                                        `could not patch ${id}: missing "${patch.find}"`,
-                                    );
+                                for (let i = 0; i < 256; i++) {
+                                    const index = code.indexOf(patch.find);
+                                    if (index === -1) {
+                                        if (i === 0) {
+                                            throw new Error(
+                                                `could not patch ${id}: missing "${patch.find}"`,
+                                            );
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    code = code.substring(0, index) +
+                                        patch.replace +
+                                        code.substring(
+                                            index + patch.find.length,
+                                        );
+
+                                    if (!patch.multi) break;
                                 }
-                                code = code.substring(0, index) +
-                                    patch.replace +
-                                    code.substring(index + patch.find.length);
                             }
                         }
                         console.log(`patched ${id}`);
