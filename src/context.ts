@@ -5,7 +5,7 @@ import {
     parse as cssParse,
     walk as cssWalk,
 } from "npm:css-tree@2.3.1";
-import { DO_NOT_FETCH_HOSTNAMES } from "../CONFIG.ts";
+import { DO_NOT_FETCH_HOSTNAMES } from "./config.ts";
 
 const USER_AGENT = "cohost-dl/1.0";
 const MAX_FILE_NAME_LENGTH_UTF8 = 250;

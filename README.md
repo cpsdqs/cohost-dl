@@ -1,5 +1,5 @@
 # cohost-dl
-Archives data from cohost.org, which is shutting down.
+Downloads posts onto your computer from cohost.org, which is shutting down.
 
 ## Usage
 1. `cp CONFIG.example.ts CONFIG.ts`
@@ -9,4 +9,6 @@ Archives data from cohost.org, which is shutting down.
     - if you’re using a system that doesn’t support bash,
       you can probably just copy the `deno run ...` command from this file and run it directly.
 
-If it breaks, you can restart it, and it will try and pick up where it left off.
+It's safe to interrupt and re-start the script at any time.
+Things that have already been downloaded will not be downloaded again,
+and any changes in configuration will be taken into account upon restart.

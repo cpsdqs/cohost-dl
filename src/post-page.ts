@@ -18,6 +18,7 @@ import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
 import { rewritePost } from "./post.ts";
 import { rewriteProject } from "./project.ts";
 import { rewriteComment } from "./comment.ts";
+import { ENABLE_JAVASCRIPT } from "./config.ts";
 
 interface ISinglePostView {
     postId: number;
@@ -149,7 +150,9 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
         FROM_POST_PAGE_TO_ROOT + POST_PAGE_SCRIPT_PATH,
     );
     contentScript.setAttribute("async", "");
-    document.body.append(contentScript);
+    if (ENABLE_JAVASCRIPT) {
+        document.body.append(contentScript);
+    }
 
     for (const link of document.querySelectorAll("link")) {
         if (
