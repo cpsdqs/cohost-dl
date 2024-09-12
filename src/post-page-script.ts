@@ -689,7 +689,52 @@ const MISSING_FILES: Record<string, { importer: string; contents: string }> = {
     },
 };
 
-const header = `if (!window.define) {
+const EMOJI = {
+    "chunks.png": "https://cohost.org/static/f59b84127fa7b6c48b6c.png",
+    "eggbug-classic.png": "https://cohost.org/static/41454e429d62b5cb7963.png",
+    "eggbug.png": "https://cohost.org/static/17aa2d48956926005de9.png",
+    "sixty.png": "https://cohost.org/static/9a6014af31fb1ca65a1f.png",
+    "unyeah.png": "https://cohost.org/static/5cf84d596a2c422967de.png",
+    "yeah.png": "https://cohost.org/static/014b0a8cc35206ef151d.png",
+};
+const PLUS_EMOJI = {
+    "eggbug-asleep.png": "https://cohost.org/static/ebbf360236a95b62bdfc.png",
+    "eggbug-devious.png": "https://cohost.org/static/c4f3f2c6b9ffb85934e7.png",
+    "eggbug-heart-sob.png":
+        "https://cohost.org/static/b59709333449a01e3e0a.png",
+    "eggbug-nervous.png": "https://cohost.org/static/d2753b632211c395538e.png",
+    "eggbug-pensive.png": "https://cohost.org/static/ae53a8b5de7c919100e6.png",
+    "eggbug-pleading.png": "https://cohost.org/static/11c5493261064ffa82c0.png",
+    "eggbug-relieved.png": "https://cohost.org/static/3633c116f0941d94d237.png",
+    "eggbug-shocked.png": "https://cohost.org/static/b25a9fdf230219087003.png",
+    "eggbug-smile-hearts.png":
+        "https://cohost.org/static/d7ec7f057e6fb15a94cc.png",
+    "eggbug-sob.png": "https://cohost.org/static/9559ff8058a895328d76.png",
+    "eggbug-tuesday.png": "https://cohost.org/static/90058099e741e483208a.png",
+    "eggbug-uwu.png": "https://cohost.org/static/228d3a13bd5f7796b434.png",
+    "eggbug-wink.png": "https://cohost.org/static/3bc3a1c5272e2ceb8712.png",
+    "host-aww.png": "https://cohost.org/static/9bb403f3822c6457baf6.png",
+    "host-cry.png": "https://cohost.org/static/530f8cf75eac87716702.png",
+    "host-evil.png": "https://cohost.org/static/cb9a5640d7ef7b361a1a.png",
+    "host-frown.png": "https://cohost.org/static/99c7fbf98de865cc9726.png",
+    "host-joy.png": "https://cohost.org/static/53635f5fe850274b1a7d.png",
+    "host-love.png": "https://cohost.org/static/c45b6d8f9de20f725b98.png",
+    "host-nervous.png": "https://cohost.org/static/e5d55348f39c65a20148.png",
+    "host-plead.png": "https://cohost.org/static/fa883e2377fea8945237.png",
+    "host-shock.png": "https://cohost.org/static/bfa6d6316fd95ae76803.png",
+    "host-stare.png": "https://cohost.org/static/a09d966cd188c9ebaa4c.png",
+};
+
+function header(ctx: CohostContext) {
+    const convertEmoji = (data: Record<string, string>) => {
+        return Object.fromEntries(
+            Object.entries(data).map((
+                [k, v],
+            ) => [k, ctx.propsForResourceURL(v)!.filePath]),
+        );
+    };
+
+    return `if (!window.define) {
     const modules = {};
     window.__modules = modules;
     const modulePromises = {};
@@ -719,19 +764,15 @@ const header = `if (!window.define) {
     
     require.context = (dir, useSubdirs) => {
         if ((dir === "../../images/emoji" || dir === "../images/emoji") && !useSubdirs) {
-            return { keys: () => ${
-    JSON.stringify(
-        // TODO
-        [],
-    )
-}};
+            const data = ${JSON.stringify(convertEmoji(EMOJI))};
+            const f = (n) => data[n];
+            f.keys = () => Object.keys(data);
+            return f;
         } else if ((dir === "../../images/plus-emoji" || dir === "../images/plus-emoji") && !useSubdirs) {
-            return { keys: () => ${
-    JSON.stringify(
-        // TODO
-        [],
-    )
-} };
+            const data = ${JSON.stringify(convertEmoji(PLUS_EMOJI))};
+            const f = (n) => data[n];
+            f.keys = () => Object.keys(data);
+            return f;
         }
         throw new Error('not supported: require.context for ' + dir);
     };
@@ -763,6 +804,7 @@ const header = `if (!window.define) {
     window.process = { env: { NODE_ENV: 'production' } };
 }
 `;
+}
 
 interface PatchReplace {
     find: string;
@@ -879,14 +921,15 @@ const PATCHES: Record<string, Patch[]> = {
     "preact/components/posts/blocks/attachments/audio.tsx": [
         {
             find: "pathEntries = new URL(block.attachment.fileURL)",
-            replace: "pathEntries = new URL(block.attachment.fileURL, location.href)",
-        }
+            replace:
+                "pathEntries = new URL(block.attachment.fileURL, location.href)",
+        },
     ],
     "preact/components/partials/project-avatar.tsx": [
         {
             find: "parsedSrc = new URL(src)",
             replace: "parsedSrc = new URL(src, location.href)",
-        }
+        },
     ],
     "preact/hooks/data-loaders.ts": [
         {
@@ -899,7 +942,7 @@ const PATCHES: Record<string, Patch[]> = {
         {
             find: "const parsedSrc = new URL(src);",
             replace: "const parsedSrc = new URL(src, document.location.href);",
-        }
+        },
     ],
     "preact/providers/user-info-provider.tsx": [
         {
@@ -930,11 +973,13 @@ const PATCHES: Record<string, Patch[]> = {
     "lib/markdown/other-rendering.ts": [
         {
             find: "const markdownRenderStackNoHTML =",
-            replace: `${IMPL_REWRITE_CDN_URLS}\nconst markdownRenderStackNoHTML =`,
+            replace:
+                `${IMPL_REWRITE_CDN_URLS}\nconst markdownRenderStackNoHTML =`,
         },
         {
             find: ".use(rehypeSanitize, effectiveSchema)",
-            replace: ".use(rehypeSanitize, effectiveSchema).use(rewriteCdnUrls)",
+            replace:
+                ".use(rehypeSanitize, effectiveSchema).use(rewriteCdnUrls)",
         },
     ],
 };
@@ -949,7 +994,9 @@ export async function generatePostPageScript(
 ) {
     console.log("compiling post page script");
 
-    const cssTreeSourcePath = await ctx.loadResourceToFile("https://esm.sh/v135/css-tree@2.3.1/es2022/css-tree.bundle.mjs");
+    const cssTreeSourcePath = await ctx.loadResourceToFile(
+        "https://esm.sh/v135/css-tree@2.3.1/es2022/css-tree.bundle.mjs",
+    );
     if (!cssTreeSourcePath) {
         throw new Error("could not load css-tree");
     }
@@ -960,6 +1007,12 @@ export async function generatePostPageScript(
             [k, v],
         ) => [ctx.getCleanPath(`${srcDir}/${k}`), v]),
     );
+
+    for (
+        const file of [...Object.values(EMOJI), ...Object.values(PLUS_EMOJI)]
+    ) {
+        await ctx.loadResourceToFile(file);
+    }
 
     const realSrcDir = await Deno.realPath(ctx.getCleanPath(srcDir));
 
@@ -1229,7 +1282,7 @@ export async function generatePostPageScript(
     });
 
     const { output } = await bundle.generate({
-        banner: header,
+        banner: header(ctx),
         dir: "",
         format: "amd",
     });
