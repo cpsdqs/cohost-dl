@@ -27,8 +27,7 @@ export const SKIP_POSTS = [
 // This information will then be used to also load posts you've commented on or sent an ask for.
 export const DATA_PORTABILITY_ARCHIVE_PATH = '';
 
-// Set to true to enable Javascript, which enables interaction on the generated pages
+// Set this to false to disable Javascript, which is responsible for interaction on the generated pages
 // (read more/read less, opening/closing CWs, image attachments, etc.).
-// This is currently a bit janky, so it's disabled by default.
-// NOTE: I have not tested on Windows. This may be very broken
-export const ENABLE_JAVASCRIPT = false;
+// It's a little janky, so maybe you want an HTML-only export.
+export const ENABLE_JAVASCRIPT = true;
