@@ -17,6 +17,7 @@ import { generatePostPageScript } from "./src/post-page-script.ts";
 import { rewritePost } from "./src/post.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
+await ctx.init();
 
 {
     // check that login actually worked
@@ -109,4 +110,5 @@ if (ENABLE_JAVASCRIPT) {
     }
 }
 
+await ctx.finalize();
 console.log("Done");

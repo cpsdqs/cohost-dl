@@ -4,7 +4,7 @@ import {
     parse as cssParse,
     walk as cssWalk,
 } from "npm:css-tree@2.3.1";
-import { CohostContext } from "./context.ts";
+import { CohostContext, encodeFilePathURI } from "./context.ts";
 import {
     COHOST_DL_USER,
     getPageState,
@@ -66,7 +66,7 @@ async function loadResources(
                         resolvedSrc.toString(),
                     );
                     if (filePath) {
-                        const url = encodeURI(filePathBase + filePath);
+                        const url = encodeFilePathURI(filePathBase + filePath);
                         el.setAttribute("src", url);
                         rewrites[src!] = url;
                         el.removeAttribute("srcset");
@@ -109,7 +109,7 @@ async function loadResources(
                 const filePath = await ctx.loadResourceToFile(
                     resolved.toString(),
                 );
-                if (filePath) node.value = encodeURI(filePathBase + filePath);
+                if (filePath) node.value = encodeFilePathURI(filePathBase + filePath);
             }));
 
             el.setAttribute("style", cssGenerate(tree));

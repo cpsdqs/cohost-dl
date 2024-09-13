@@ -1,4 +1,4 @@
-import { CohostContext } from "./context.ts";
+import { CohostContext, encodeFilePathURI } from "./context.ts";
 import { unified } from "npm:unified";
 import remarkParse from "npm:remark-parse";
 import remarkGfm from "npm:remark-gfm";
@@ -20,8 +20,8 @@ async function rewriteUrls(
         const resolved = new URL(node.url, 'https://cohost.org/x').toString();
         const url = await ctx.loadResourceToFile(resolved);
         if (url) {
-            rewrites[node.url] = base + url;
-            node.url = base + url;
+            rewrites[node.url] = encodeFilePathURI(base + url);
+            node.url = encodeFilePathURI(base + url);
         }
     }
 

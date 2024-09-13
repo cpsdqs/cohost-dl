@@ -1,4 +1,4 @@
-import { CohostContext } from "./context.ts";
+import { CohostContext, encodeFilePathURI } from "./context.ts";
 import { IPost } from "./model.ts";
 import {
     generate as cssGenerate,
@@ -74,7 +74,7 @@ export async function rewritePost(
                 block.attachment.fileURL,
             );
             if (filePath) {
-                const url = base + filePath;
+                const url = encodeFilePathURI(base + filePath);
                 rewriteData.urls[block.attachment.fileURL] = url;
                 block.attachment.fileURL = url;
                 block.attachment.previewURL = url;
@@ -111,7 +111,7 @@ export async function rewritePost(
                             resolved.toString(),
                         );
                         if (filePath) {
-                            const url = base + filePath;
+                            const url = encodeFilePathURI(base + filePath);
                             rewriteData.urls[node.value] = url;
                             node.value = url;
                             mutated = true;
@@ -136,7 +136,7 @@ export async function rewritePost(
                             resolved.toString(),
                         );
                         if (filePath) {
-                            const url = base + filePath;
+                            const url = encodeFilePathURI(base + filePath);
                             rewriteData.urls[node.properties.src] = url;
                             node.properties.src = url;
                         }

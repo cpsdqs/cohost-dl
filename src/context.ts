@@ -14,10 +14,16 @@ export function splitTooLongFileName(filePath: string): string {
     let dirname = path.dirname(filePath);
     let filename = path.basename(filePath);
 
-    while (new TextEncoder().encode(filename).byteLength > MAX_FILE_NAME_LENGTH_UTF8) {
-        let firstBit = '';
+    while (
+        new TextEncoder().encode(filename).byteLength >
+            MAX_FILE_NAME_LENGTH_UTF8
+    ) {
+        let firstBit = "";
         let rest = filename;
-        while (new TextEncoder().encode(firstBit).byteLength < MAX_FILE_NAME_LENGTH_UTF8) {
+        while (
+            new TextEncoder().encode(firstBit).byteLength <
+                MAX_FILE_NAME_LENGTH_UTF8
+        ) {
             const item = rest[Symbol.iterator]().next().value;
             firstBit += item;
             rest = rest.substring(item.length);
@@ -30,7 +36,76 @@ export function splitTooLongFileName(filePath: string): string {
     return path.join(dirname, filename);
 }
 
+const NORMAL_FILE_EXTENSIONS = {
+    // image formats
+    "apng": "image/apng",
+    "avif": "image/avif",
+    "bmp": "image/bmp",
+    "gif": "image/gif",
+    "heic": "image/heic",
+    "heif": "image/heif",
+    "ico": "image/x-icon",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "jfif": "image/jpeg",
+    "jxl": "image/jxl",
+    "png": "image/png",
+    "svg": ["image/svg+xml", "image/svg"],
+    "tif": "image/tiff",
+    "tiff": "image/tiff",
+    "webp": "image/webp",
+
+    // av formats
+    "flac": "audio/flac",
+    "ogg": ["audio/ogg", "video/ogg", "application/ogg"],
+    "opus": "audio/opus",
+    "mp3": "audio/mpeg",
+    "mp4": ["audio/mp4", "video/mp4"],
+    "m4a": ["audio/mp4", "video/mp4"],
+    "wav": ["audio/wav", "audio/vnd.wave", "audio/wave", "audio/x-wav"],
+
+    // other resources
+    "css": "text/css",
+    "js": ["application/javascript", "text/javascript"],
+    "mjs": ["application/javascript", "text/javascript"],
+    "json": ["application/json", "text/json"],
+    "map": [] as string[],
+    "woff": ["font/woff"],
+    "woff2": ["font/woff2"],
+};
+
+function doesResourceFilePathProbablyNeedAFileExtension(
+    filePath: string,
+): boolean {
+    const fileExtension = path.extname(filePath).toLowerCase().replace(
+        /^[.]/,
+        "",
+    );
+    return !(fileExtension in NORMAL_FILE_EXTENSIONS);
+}
+
+function resourceFileExtensionForContentType(
+    contentType: string,
+): string | null {
+    const baseContentType = contentType.split(";")[0];
+
+    for (const [ext, types] of Object.entries(NORMAL_FILE_EXTENSIONS)) {
+        if (
+            (Array.isArray(types) && types.includes(baseContentType)) ||
+            types === baseContentType
+        ) return ext;
+    }
+    return null;
+}
+
 export const POST_URL_REGEX = /^https:\/\/cohost[.]org\/([^\/]+)\/post\/(\d+)-/;
+
+const CACHED_CONTENT_TYPES_FILE_PATH = "~headers.json";
+
+export function encodeFilePathURI(path: string): string {
+    // encodeURI preserves ?search, which we don’t want
+    return path.split('/').map(encodeURIComponent).join('/');
+}
 
 export class CohostContext {
     /** cookie header */
@@ -39,9 +114,59 @@ export class CohostContext {
     /** output directory for files */
     rootDir: string;
 
+    cachedContentTypes: Record<string, Record<string, string>> = {};
+
     constructor(cookie: string, rootDir: string) {
         this.cookie = cookie;
         this.rootDir = rootDir;
+    }
+
+    async init() {
+        try {
+            this.cachedContentTypes = (await this.readJson(
+                CACHED_CONTENT_TYPES_FILE_PATH,
+            )) as typeof this.cachedContentTypes;
+        } catch {
+            // not important
+        }
+    }
+
+    async finalize() {
+        await this.flushCachedContentTypes();
+    }
+
+    getCachedContentType(url: string): string | null {
+        return this.cachedContentTypes[url]?.["content-type"] ?? null;
+    }
+
+    setCachedContentType(url: string, contentType: string) {
+        this.cachedContentTypes[url] = { "content-type": contentType };
+        this.scheduleFlushCachedContentTypes();
+    }
+
+    scheduledFlushContentTypes: ReturnType<typeof setTimeout> | null = null;
+    scheduleFlushCachedContentTypes() {
+        if (this.scheduledFlushContentTypes) return;
+        this.scheduledFlushContentTypes = setTimeout(() => {
+            const _ = this.flushCachedContentTypes();
+        }, 5000);
+    }
+
+    async flushCachedContentTypes() {
+        if (this.scheduledFlushContentTypes) {
+            clearTimeout(this.scheduledFlushContentTypes);
+        }
+        this.scheduledFlushContentTypes = null;
+
+        try {
+            await this.write(
+                CACHED_CONTENT_TYPES_FILE_PATH,
+                JSON.stringify(this.cachedContentTypes),
+            );
+        } catch (error) {
+            console.error("failed to write content types cache!");
+            console.error(error);
+        }
     }
 
     /** Performs a GET request */
@@ -63,9 +188,15 @@ export class CohostContext {
         return res;
     }
 
+    /** Beware when using this method with external files, because it may not return the final filePath */
     propsForResourceURL(
         urlString: string,
-    ): { fetch: string; filePath: string; canFail?: boolean } | null {
+    ): {
+        fetch: string;
+        filePath: string;
+        canFail?: boolean;
+        skipFileExtCheck?: boolean;
+    } | null {
         const url = new URL(urlString);
         if (
             url.hostname === "staging.cohostcdn.org" &&
@@ -74,16 +205,23 @@ export class CohostContext {
             return {
                 fetch: `https://staging.cohostcdn.org${url.pathname}`,
                 filePath: `rc${decodeURIComponent(url.pathname)}`,
+                skipFileExtCheck: true,
             };
         } else if (url.hostname === "cohost.org") {
             return {
                 fetch: urlString,
                 filePath: decodeURIComponent(url.pathname.substring(1)), // no leading /
+                skipFileExtCheck: true,
             };
-        } else if (url.protocol === "https:" && !DO_NOT_FETCH_HOSTNAMES.includes(url.hostname)) {
+        } else if (
+            url.protocol === "https:" &&
+            !DO_NOT_FETCH_HOSTNAMES.includes(url.hostname)
+        ) {
             return {
                 fetch: urlString,
-                filePath: splitTooLongFileName(`rc/external/${url.host}${url.pathname}${url.search}`),
+                filePath: splitTooLongFileName(
+                    `rc/external/${url.host}${url.pathname}${url.search}`,
+                ),
                 canFail: true,
             };
         } else {
@@ -99,7 +237,7 @@ export class CohostContext {
     getCleanPath(filePath: string): string {
         if (Deno.build.os === "windows") {
             // replace illegal characters for windows paths
-            const cleanFilePath = filePath.replace(/[?%*:|"<>]/g, '-');
+            const cleanFilePath = filePath.replace(/[?%*:|"<>]/g, "-");
             return path.join(this.rootDir, cleanFilePath);
         }
 
@@ -121,10 +259,13 @@ export class CohostContext {
         if (!match) return null;
         const [, projectHandle, id] = match;
 
-        const projectDir = path.join(this.getCleanPath(projectHandle), 'post');
+        const projectDir = path.join(this.getCleanPath(projectHandle), "post");
         try {
             for await (const item of Deno.readDir(projectDir)) {
-                if (item.name.startsWith(id + '-') && item.name.endsWith('.html')) {
+                if (
+                    item.name.startsWith(id + "-") &&
+                    item.name.endsWith(".html")
+                ) {
                     return `${projectHandle}/post/${item.name}`;
                 }
             }
@@ -158,11 +299,32 @@ export class CohostContext {
         const props = this.propsForResourceURL(urlString);
         if (!props) return null;
 
-        const fullPath = this.getCleanPath(props.filePath);
+        const needsFileExtension = !props.skipFileExtCheck &&
+            doesResourceFilePathProbablyNeedAFileExtension(props.filePath);
+
+        let forceFailStat = false;
+        let filePathWithExt = props.filePath;
+
+        if (needsFileExtension) {
+            const cachedContentType = this.getCachedContentType(props.fetch);
+            if (cachedContentType === null) {
+                // from an older version of this script & probably broken. we need to reload this one
+                forceFailStat = true;
+            } else {
+                const ext = resourceFileExtensionForContentType(
+                    cachedContentType,
+                );
+                if (ext !== null) filePathWithExt = props.filePath + "." + ext;
+            }
+        }
+
+        const fullPath = this.getCleanPath(filePathWithExt);
 
         try {
+            if (forceFailStat) throw new Error("missing extension");
+
             await Deno.stat(fullPath);
-            return props.filePath;
+            return filePathWithExt;
         } catch {
             const pending = this.pendingResources.get(urlString);
             if (pending) return pending;
@@ -180,11 +342,24 @@ export class CohostContext {
                     }
                 }
 
+                const contentTypeHeader = res.headers.get("content-type");
+                if (contentTypeHeader) {
+                    this.setCachedContentType(props.fetch, contentTypeHeader);
+                }
+
+                if (needsFileExtension && contentTypeHeader) {
+                    const ext = resourceFileExtensionForContentType(
+                        contentTypeHeader,
+                    );
+                    if (ext !== null) {
+                        filePathWithExt = props.filePath + "." + ext;
+                    }
+                }
+
+                const baseContentType = contentTypeHeader?.split(";")?.[0];
+
                 let data: string | Uint8Array;
-                if (
-                    res.headers.get("content-type")?.split(";")?.[0] ===
-                        "text/css"
-                ) {
+                if (baseContentType === "text/css") {
                     data = await this.processCss(
                         urlString,
                         props.filePath,
@@ -194,9 +369,9 @@ export class CohostContext {
                     data = new Uint8Array(await res.arrayBuffer());
                 }
 
-                await this.write(props.filePath, data);
+                await this.write(filePathWithExt, data);
 
-                return props.filePath;
+                return filePathWithExt;
             })();
             this.pendingResources.set(urlString, pending2);
             return pending2;
@@ -224,7 +399,7 @@ export class CohostContext {
             if (resolved.protocol !== "https:") return;
 
             const filePath = await this.loadResourceToFile(resolved.toString());
-            if (filePath) node.value = encodeURI(toRootDir + filePath);
+            if (filePath) node.value = encodeFilePathURI(toRootDir + filePath);
         }));
 
         return cssGenerate(tree);

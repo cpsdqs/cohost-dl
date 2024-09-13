@@ -1,4 +1,4 @@
-import { CohostContext } from "./context.ts";
+import { CohostContext, encodeFilePathURI } from "./context.ts";
 import { IPost, IProject } from "./model.ts";
 import { rewriteMarkdownString } from "./markdown.ts";
 
@@ -76,8 +76,8 @@ export async function rewriteProject(
         if (project[field]) {
             const filePath = await ctx.loadResourceToFile(project[field]);
             if (filePath) {
-                rewrites[project[field]] = base + filePath;
-                project[field] = base + filePath;
+                rewrites[project[field]] = encodeFilePathURI(base + filePath);
+                project[field] = encodeFilePathURI(base + filePath);
             }
         }
     }
