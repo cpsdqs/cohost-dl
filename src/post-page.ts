@@ -219,8 +219,20 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
 
     savePageState(document, pageState);
 
+    fixReactHydration(document);
+
     await ctx.write(
         filePathForPost(post),
         "<!DOCTYPE html>\n" + document.documentElement!.outerHTML,
     );
+}
+
+function fixReactHydration(document: Document) {
+    const singlePostViewParent = document.querySelector("div.flex.flex-grow.flex-col.pb-20")!;
+    const divForSomeReason = document.createElement('div');
+    singlePostViewParent.insertBefore(divForSomeReason, singlePostViewParent.childNodes[1]);
+
+    // TODO: consider continuing?
+    // current state: it at least doesn't delete the entire DOM during hydration.
+    // As it turns out, full hydration is broken on actual real cohost.org as well, so maybe this is not really necessary...
 }

@@ -1,3 +1,5 @@
+// this file is terrible. I'm sorry
+
 import { rollup } from "npm:rollup";
 import replace from "npm:@rollup/plugin-replace";
 import commonjs from "npm:@rollup/plugin-commonjs";
@@ -21,6 +23,17 @@ import npmEmojiMartData from "npm:@emoji-mart/data" with { type: "json" };
 
 export const DIST_PATH = "~cohost-dl/dist";
 export const POST_PAGE_SCRIPT_PATH = `${DIST_PATH}/post-page.js`;
+
+const DEVELOPMENT = false;
+const INCLUDE_DEV_PACKAGES = [
+    "react",
+    "react-dom",
+    "react-is",
+    "scheduler",
+    "prop-types",
+    "use-sync-external-store",
+    "use-external-store-with-selector",
+];
 
 const PKG_ROOTS: Record<string, string> = {
     "@atlaskit/pragmatic-drag-and-drop": "dist/esm",
@@ -96,7 +109,7 @@ const PKG_ROOTS: Record<string, string> = {
     "react-dnd": "dist",
     "react-dnd-html5-backend": "dist",
     "react-helmet-async": "lib/index.esm.js",
-    "react-hook-form": "dist",
+    "react-hook-form": "dist/index.esm.mjs",
     "react-hot-toast": "dist",
     "react-i18next": "dist/es",
     "react-masonry-css": "dist/react-masonry-css.module.js",
@@ -801,7 +814,9 @@ function header(ctx: CohostContext) {
         });
     };
 
-    window.process = { env: { NODE_ENV: 'production' } };
+    window.process = { env: { NODE_ENV: '${
+        DEVELOPMENT ? "development" : "production"
+    }' } };
 }
 `;
 }
@@ -882,6 +897,12 @@ function rewriteCdnUrls() {
 `;
 
 const PATCHES: Record<string, Patch[]> = {
+    "i18n.ts": [
+        {
+            find: "loadPath: `/rc/locales/",
+            replace: "loadPath: `../../rc/locales/",
+        },
+    ],
     "client.tsx": [
         {
             find: "void loadableReady(setupApp);",
@@ -890,7 +911,9 @@ const PATCHES: Record<string, Patch[]> = {
         {
             find: "const AsyncPage =",
             replace:
-                "import singlePostViewPage from '@/client/preact/components/pages/single-post-view'; const AsyncPage =",
+                `import singlePostViewPage from '@/client/preact/components/pages/single-post-view';
+                const AsyncPage = singlePostViewPage;
+                const OLD_AsyncPage =`,
         },
         {
             find: "import(`@/client/preact/components/pages/${props.page}`)",
@@ -911,6 +934,12 @@ const PATCHES: Record<string, Patch[]> = {
             })(),
         },
     ],
+    "layouts/main.tsx": [
+        {
+            find: "<Suspense>{children}</Suspense>",
+            replace: "{children}",
+        },
+    ],
     "shared/env.ts": [
         {
             find: "get HOME_URL() {",
@@ -928,7 +957,7 @@ const PATCHES: Record<string, Patch[]> = {
     "preact/components/partials/project-avatar.tsx": [
         {
             find: "parsedSrc = new URL(src)",
-            replace: "parsedSrc = new URL(src, location.href)",
+            replace: "parsedSrc = new URL(src, location.href); return src",
         },
     ],
     "preact/hooks/data-loaders.ts": [
@@ -982,6 +1011,12 @@ const PATCHES: Record<string, Patch[]> = {
                 ".use(rehypeSanitize, effectiveSchema).use(rewriteCdnUrls)",
         },
     ],
+
+    // PATCHES FOR HYDRATION REASONS
+    "preact/components/partials/topnav.tsx": [{
+        find: "sitemap.public.home()",
+        replace: "'https://cohost.org/'",
+    }],
 };
 
 const POST_PAGE = `
@@ -1034,6 +1069,10 @@ export async function generatePostPageScript(
     }
     npmPackageItems.sort();
 
+    const npmPackageVersions: Record<string, string> = {
+        "@emoji-mart/data": "1.2.1",
+    };
+
     for (const item of npmPackageItems) {
         const versionIndex = item.indexOf("@", 1);
         const pkgName = item.substring(0, versionIndex).replace(
@@ -1045,6 +1084,9 @@ export async function generatePostPageScript(
             `${srcDir}/node_modules/.pnpm/${item}/node_modules/${pkgName}`;
 
         if (PKG_ROOTS[pkgName]) pkgRoot += `/${PKG_ROOTS[pkgName]}`;
+
+        npmPackageVersions[pkgName] =
+            item.substring(versionIndex + 1).split("_")[0];
 
         npmPackages[item.substring(0, versionIndex)] = pkgRoot;
         npmPackages[item] = pkgRoot;
@@ -1082,9 +1124,33 @@ export async function generatePostPageScript(
                         return SPECIALS[specialId];
                     }
 
+                    if (
+                        DEVELOPMENT &&
+                        (id.startsWith("https://") || id.startsWith("data:"))
+                    ) {
+                        const filePath = `~dev-cache/${encodeURIComponent(id)}`;
+                        return ctx.readText(filePath).catch(async () => {
+                            const res = await fetch(id.slice(0, -3), {
+                                headers: {
+                                    // we don't want deno packages
+                                    "User-Agent":
+                                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0",
+                                },
+                            });
+                            if (!res.ok) throw new Error(await res.text());
+                            const text = await res.text();
+                            await ctx.write(filePath, text);
+                            return text;
+                        });
+                    }
+
                     return null;
                 },
                 async resolveId(originalId, importer) {
+                    if (originalId.includes("Trans.js")) {
+                        console.log(originalId, importer);
+                    }
+
                     let resolved: string | null = null;
 
                     let id = originalId;
@@ -1093,6 +1159,27 @@ export async function generatePostPageScript(
                     }
 
                     if (REWRITE_IDS[id]) id = REWRITE_IDS[id];
+
+                    if (DEVELOPMENT && importer?.startsWith("https://")) {
+                        // dist/es -> dist/es/
+                        const importer2 = importer.slice(0, -3).match(
+                                /@([\d.]+)((\/.*)?\/esm?|\/dist|\/shim)?$/,
+                            )
+                            ? importer.slice(0, -3) + "/"
+                            : importer.slice(0, -3);
+                        if (originalId.includes("shim.development")) {
+                            console.log({
+                                originalId,
+                                importer,
+                                importer2,
+                                x: new URL(originalId, importer2).toString(),
+                            });
+                        }
+                        if (originalId.match(/^[^a-zA-Z@]/)) {
+                            return new URL(originalId, importer2).toString() +
+                                ".js";
+                        }
+                    }
 
                     if (id.startsWith("@fontsource/")) {
                         return "@internal/nothing";
@@ -1104,6 +1191,22 @@ export async function generatePostPageScript(
                         resolved = srcDir + id.substring(1);
                     } else if (id.startsWith("@")) {
                         const [name, pkg, ...rest] = id.split("/");
+
+                        if (
+                            DEVELOPMENT &&
+                            INCLUDE_DEV_PACKAGES.includes(`${name}/${pkg}`)
+                        ) {
+                            const pkgName = `${name}/${pkg}`;
+                            return `https://unpkg.com/${name}/${pkg}${
+                                npmPackageVersions[pkgName]
+                                    ? "@" + npmPackageVersions[pkgName]
+                                    : ""
+                            }${
+                                PKG_ROOTS[pkgName]
+                                    ? `/${PKG_ROOTS[pkgName]}`
+                                    : ""
+                            }${rest.length ? `/${rest.join("/")}` : ""}.js`;
+                        }
 
                         const pkgName = `${name}+${pkg}`;
 
@@ -1117,6 +1220,20 @@ export async function generatePostPageScript(
 
                         let pkg = originalPkg;
                         let rest = restItems.join("/");
+
+                        if (
+                            DEVELOPMENT &&
+                            INCLUDE_DEV_PACKAGES.includes(originalPkg)
+                        ) {
+                            // need to add .js for commonjs to take effect
+                            return `https://unpkg.com/${pkg}${
+                                npmPackageVersions[pkg]
+                                    ? "@" + npmPackageVersions[pkg]
+                                    : ""
+                            }${PKG_ROOTS[pkg] ? `/${PKG_ROOTS[pkg]}` : ""}${
+                                rest ? `/${rest}` : ""
+                            }.js`;
+                        }
 
                         for (const item of IMPORT_VERSIONS[pkg] ?? []) {
                             if (importer?.includes(item.importer)) {
@@ -1247,7 +1364,9 @@ export async function generatePostPageScript(
                 },
             },
             replace({
-                "process.env.NODE_ENV": "'production'",
+                "process.env.NODE_ENV": DEVELOPMENT
+                    ? "'development'"
+                    : "'production'",
                 preventAssignment: true,
             }),
             commonjs(),
