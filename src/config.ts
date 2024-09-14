@@ -13,4 +13,6 @@ export const DATA_PORTABILITY_ARCHIVE_PATH =
 
 export const DO_NOT_FETCH_HOSTNAMES = data.DO_NOT_FETCH_HOSTNAMES ?? [];
 
-export const ENABLE_JAVASCRIPT = data.ENABLE_JAVASCRIPT ?? false;
+export const ENABLE_JAVASCRIPT = data.ENABLE_JAVASCRIPT ?? true;
+
+export const GENERIC_OBSERVER = data.GENERIC_OBSERVER ?? false;

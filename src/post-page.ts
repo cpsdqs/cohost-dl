@@ -7,18 +7,21 @@ import {
 import { CohostContext, encodeFilePathURI } from "./context.ts";
 import {
     COHOST_DL_USER,
+    GENERIC_DISPLAY_PREFS,
     getPageState,
     IComment,
+    IDisplayPrefs,
     ILoggedIn,
     IPost,
     IProject,
+    PageState,
     savePageState,
 } from "./model.ts";
 import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
 import { rewritePost } from "./post.ts";
 import { rewriteProject } from "./project.ts";
 import { rewriteComment } from "./comment.ts";
-import { ENABLE_JAVASCRIPT } from "./config.ts";
+import { ENABLE_JAVASCRIPT, GENERIC_OBSERVER } from "./config.ts";
 
 interface ISinglePostView {
     postId: number;
@@ -109,7 +112,9 @@ async function loadResources(
                 const filePath = await ctx.loadResourceToFile(
                     resolved.toString(),
                 );
-                if (filePath) node.value = encodeFilePathURI(filePathBase + filePath);
+                if (filePath) {
+                    node.value = encodeFilePathURI(filePathBase + filePath);
+                }
             }));
 
             el.setAttribute("style", cssGenerate(tree));
@@ -217,6 +222,10 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
     rewriteScript.innerHTML = JSON.stringify(rewriteData);
     document.head.append(rewriteScript);
 
+    if (GENERIC_OBSERVER) {
+        toGenericObserver(document, pageState);
+    }
+
     savePageState(document, pageState);
 
     fixReactHydration(document);
@@ -228,11 +237,109 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
 }
 
 function fixReactHydration(document: Document) {
-    const singlePostViewParent = document.querySelector("div.flex.flex-grow.flex-col.pb-20")!;
-    const divForSomeReason = document.createElement('div');
-    singlePostViewParent.insertBefore(divForSomeReason, singlePostViewParent.childNodes[1]);
+    const singlePostViewParent = document.querySelector(
+        "div.flex.flex-grow.flex-col.pb-20",
+    )!;
+    const divForSomeReason = document.createElement("div");
+    singlePostViewParent.insertBefore(
+        divForSomeReason,
+        singlePostViewParent.childNodes[1],
+    );
 
     // TODO: consider continuing?
     // current state: it at least doesn't delete the entire DOM during hydration.
     // As it turns out, full hydration is broken on actual real cohost.org as well, so maybe this is not really necessary...
+}
+
+function toGenericObserver(
+    document: Document,
+    pageState: PageState<ISinglePostView>,
+) {
+    const loggedIn = pageState.query<ILoggedIn>("login.loggedIn");
+    loggedIn.projectId = 0;
+
+    const editedProjects = pageState.query<{ projects: IProject[] }>(
+        "projects.listEditedProjects",
+    );
+    editedProjects.projects = [];
+
+    const bookmarkedTags = pageState.query<{ tags: string[] }>(
+        "bookmarks.tags.list",
+    );
+    bookmarkedTags.tags = [];
+
+    // free Cohost Plus!
+    pageState.updateQuery(
+        "subscriptions.hasActiveSubscription",
+        undefined,
+        true,
+    );
+
+    const displayPrefs = pageState.query<IDisplayPrefs>("users.displayPrefs");
+    Object.assign(displayPrefs, GENERIC_DISPLAY_PREFS);
+
+    const postComposerSettings = pageState.query<{
+        defaultAdultContent: boolean;
+        defaultCws: string[];
+        defaultTags: string[];
+    }>("posts.postComposerSettings", {});
+
+    postComposerSettings.defaultAdultContent = false;
+    postComposerSettings.defaultTags = [];
+    postComposerSettings.defaultCws = [];
+
+    pageState.trpcState.queries.forEach((query) => {
+        const key = query.queryKey[0]?.join?.(".") ?? query.queryKey[0];
+        if (
+            key === "projects.isReaderMuting" ||
+            key === "projects.isReaderBlocking"
+        ) {
+            query.state.data = false;
+        } else if (key === "projects.followingState") {
+            query.state.data = { readerToProject: 0 };
+        } else if (key === "projects.userNote") {
+            query.state.data = { contents: "" };
+        } else if (key === "posts.isLiked") {
+            query.state.data = false;
+        }
+    });
+
+    for (
+        const node of document.querySelectorAll(".co-themed-box[data-theme]")
+    ) {
+        node.setAttribute("data-theme", "both");
+    }
+
+    for (const node of document.querySelectorAll("button div.font-bold")) {
+        if (node.textContent === "show private contact info") {
+            const button = node.parentNode! as Element;
+            button.nextElementSibling!.remove(); // <hr>
+            button.remove();
+        }
+    }
+
+    for (const node of document.querySelectorAll("button.w-6")) {
+        if (
+            node.getAttribute("title")?.startsWith("like this post as") ||
+            node.getAttribute("title")?.startsWith("unlike this post as")
+        ) {
+            node.remove();
+        }
+    }
+
+    for (const node of document.querySelectorAll("div.bg-longan")) {
+        if (node.textContent === "Private Note") {
+            const privateNoteBox = node.parentNode! as Element;
+            const textArea = privateNoteBox.querySelector("textarea")!;
+            textArea.innerHTML = "";
+            const sizer = textArea.previousElementSibling!;
+            sizer.innerHTML = "";
+            privateNoteBox.remove();
+        }
+    }
+
+    const nav = document.querySelector("header nav");
+    if (nav) {
+        nav.innerHTML = "";
+    }
 }

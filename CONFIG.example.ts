@@ -30,4 +30,19 @@ export const DATA_PORTABILITY_ARCHIVE_PATH = '';
 // Set this to false to disable Javascript, which is responsible for interaction on the generated pages
 // (read more/read less, opening/closing CWs, image attachments, etc.).
 // It's a little janky, so maybe you want an HTML-only export.
+//
+// NOTE: not tested on Windows
 export const ENABLE_JAVASCRIPT = true;
+
+// Alters pages to look like they're being viewed by a more generic observer instead of how your account sees things.
+// - Attempts to revert settings for silenced tags, CWs, 18+
+//   - These cannot be completely removed right now. Original settings will be briefly visible if they were applicable
+//     to that particular post.
+// - Reverts to the default theme
+// - Removes bookmarked tags, private notes, private contact info, the page switcher, whether you liked a post,
+//   and whether you were following someone.
+// - Does not remove your own handle from some internal data
+// - Does not hide posts from private accounts
+//
+// NOTE: currently breaks Javascript on all of your own post pages
+export const GENERIC_OBSERVER = false;

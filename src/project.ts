@@ -1,6 +1,7 @@
 import { CohostContext, encodeFilePathURI } from "./context.ts";
 import { IPost, IProject } from "./model.ts";
 import { rewriteMarkdownString } from "./markdown.ts";
+import { GENERIC_OBSERVER } from "./config.ts";
 
 interface IProfilePostsRes {
     pagination: {
@@ -89,6 +90,11 @@ export async function rewriteProject(
     );
     project.description = markdown;
     Object.assign(rewrites, urls);
+
+    if (GENERIC_OBSERVER) {
+        project.isSelfProject = null;
+        project.contactCard = project.contactCard.filter(item => item.visibility !== "follows");
+    }
 
     return rewrites;
 }
