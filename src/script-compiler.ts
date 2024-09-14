@@ -23,7 +23,7 @@ import npmEmojiMartData from "npm:@emoji-mart/data" with { type: "json" };
 
 export const DIST_PATH = "~cohost-dl/dist";
 
-const DEVELOPMENT = true;
+const DEVELOPMENT = false;
 const INCLUDE_DEV_PACKAGES = [
     "react",
     "react-dom",
