@@ -13,8 +13,9 @@ import { loadAllProjectPosts } from "./src/project.ts";
 import { IPost } from "./src/model.ts";
 import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.ts";
 import { loadCohostSource } from "./src/cohost-source.ts";
-import { generatePostPageScript } from "./src/post-page-script.ts";
+import { generateAllScripts } from "./src/scripts/index.ts";
 import { rewritePost } from "./src/post.ts";
+import { generateAllProjectIndices } from "./src/project-index.ts";
 
 const ctx = new CohostContext(COOKIE, "out");
 await ctx.init();
@@ -54,7 +55,7 @@ await ctx.init();
 // javascript
 if (ENABLE_JAVASCRIPT) {
     const dir = await loadCohostSource(ctx);
-    await generatePostPageScript(ctx, dir);
+    await generateAllScripts(ctx, dir);
 }
 
 // Single post pages
@@ -108,6 +109,10 @@ if (ENABLE_JAVASCRIPT) {
         console.log(`~~ processing additional post ${post}`);
         await loadPostPage(ctx, post);
     }
+}
+
+{
+    await generateAllProjectIndices(ctx);
 }
 
 await ctx.finalize();

@@ -17,13 +17,13 @@ import {
     PageState,
     savePageState,
 } from "./model.ts";
-import { POST_PAGE_SCRIPT_PATH } from "./post-page-script.ts";
+import { POST_PAGE_SCRIPT_PATH } from "./scripts/index.ts";
 import { rewritePost } from "./post.ts";
 import { rewriteProject } from "./project.ts";
 import { rewriteComment } from "./comment.ts";
 import { ENABLE_JAVASCRIPT, GENERIC_OBSERVER } from "./config.ts";
 
-interface ISinglePostView {
+export interface ISinglePostView {
     postId: number;
     project: IProject;
 }

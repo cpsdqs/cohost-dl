@@ -143,7 +143,7 @@ export interface IPost {
 
 export interface ITRPCQuery {
     queryHash: string;
-    queryKey: [string[], {
+    queryKey: [string | string[], {
         input?: object;
         type: "query";
     }];
