@@ -15,7 +15,8 @@ export const DO_NOT_FETCH_HOSTNAMES = [
 ];
 
 // some posts may have disappeared between loading the list of posts and actually loading the posts,
-// and give you a '404 not found' error. so, these post IDs can be listed here and be skipped when loading
+// and give you a '404 not found' error. so, these post IDs can be listed here and be skipped when loading,
+// so as not to keep retrying every time you run the script
 export const SKIP_POSTS = [
     9639936,
 ];

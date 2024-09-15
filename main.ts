@@ -58,6 +58,8 @@ if (ENABLE_JAVASCRIPT) {
     await generateAllScripts(ctx, dir);
 }
 
+const errors: { url: string; error: Error }[] = [];
+
 // Single post pages
 {
     const likedPosts = await ctx.readJson("liked.json") as IPost[];
@@ -70,11 +72,20 @@ if (ENABLE_JAVASCRIPT) {
         ...projectPosts.flatMap((x) => x),
     ];
 
+    const loadPostPageAndCollectError = async (url: string) => {
+        try {
+            await loadPostPage(ctx, url);
+        } catch (error) {
+            console.error(`\x1b[31mFailed! ${error}\x1b[m`);
+            errors.push({ url, error });
+        }
+    };
+
     for (const post of allPosts) {
         if (SKIP_POSTS.includes(post.postId)) continue;
 
         console.log(`~~ processing post ${post.singlePostPageUrl}`);
-        await loadPostPage(ctx, post.singlePostPageUrl);
+        await loadPostPageAndCollectError(post.singlePostPageUrl);
     }
 
     // it can happen that we've cached data for a post that is now a 404.
@@ -107,7 +118,7 @@ if (ENABLE_JAVASCRIPT) {
         if (SKIP_POSTS.includes(probablyThePostId)) continue;
 
         console.log(`~~ processing additional post ${post}`);
-        await loadPostPage(ctx, post);
+        await loadPostPageAndCollectError(post);
     }
 }
 
@@ -116,4 +127,12 @@ if (ENABLE_JAVASCRIPT) {
 }
 
 await ctx.finalize();
-console.log("Done");
+
+if (errors.length) {
+    console.log(
+        `Done, with ${errors.length} error${errors.length === 1 ? "" : "s"}`,
+    );
+    for (const { url, error } of errors) console.log(`${url}: ${error}`);
+} else {
+    console.log("Done");
+}
