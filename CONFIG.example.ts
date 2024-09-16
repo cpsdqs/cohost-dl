@@ -11,7 +11,7 @@ export const POSTS = [
 
 // some CSS posts contain external images that load forever
 export const DO_NOT_FETCH_HOSTNAMES = [
-    'an-external-domain-that-breaks-the-program.com',
+    'eggbugpocket.queertra.sh', // GIF plays Pokémon
 ];
 
 // some posts may have disappeared between loading the list of posts and actually loading the posts,

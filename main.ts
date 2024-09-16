@@ -28,7 +28,7 @@ await ctx.init();
     const loginState = await loginStateResponse.json();
     if (!loginState[0].result.data.loggedIn) {
         console.error(
-            "warning:\nNot logged in. Please update your cookie configuration\n\n",
+            "\x1b[33mwarning:\nNot logged in. Please update your cookie configuration if cohost.org still exists\x1b[m\n\n",
         );
     } else {
         console.log(`logged in as ${loginState[0].result.data.email}`);
@@ -130,9 +130,9 @@ await ctx.finalize();
 
 if (errors.length) {
     console.log(
-        `Done, with ${errors.length} error${errors.length === 1 ? "" : "s"}`,
+        `\x1b[32mDone, \x1b[33mwith ${errors.length} error${errors.length === 1 ? "" : "s"}\x1b[m`,
     );
     for (const { url, error } of errors) console.log(`${url}: ${error}`);
 } else {
-    console.log("Done");
+    console.log("\x1b[32mDone\x1b[m");
 }
