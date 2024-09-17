@@ -20,6 +20,7 @@ import { generateAllProjectIndices } from "./src/project-index.ts";
 const ctx = new CohostContext(COOKIE, "out");
 await ctx.init();
 
+let isLoggedIn = false;
 {
     // check that login actually worked
     const loginStateResponse = await ctx.get(
@@ -32,11 +33,12 @@ await ctx.init();
         );
     } else {
         console.log(`logged in as ${loginState[0].result.data.email}`);
+        isLoggedIn = true;
     }
 }
 
 // JSON data
-{
+if (isLoggedIn) {
     // load all liked posts for the current page
     if (!(await ctx.hasFile("liked.json"))) {
         const liked = await loadAllLikedPosts(ctx);
@@ -50,6 +52,8 @@ await ctx.init();
             await ctx.write(`${handle}/posts.json`, JSON.stringify(posts));
         }
     }
+} else {
+    console.log("\x1b[33mnot logged in: skipping liked posts and project posts \x1b[m");
 }
 
 // javascript
@@ -62,9 +66,19 @@ const errors: { url: string; error: Error }[] = [];
 
 // Single post pages
 {
-    const likedPosts = await ctx.readJson("liked.json") as IPost[];
+    const likedPosts: IPost[] = [];
+    if (await ctx.hasFile("liked.json")) {
+        likedPosts.push(...await ctx.readJson("liked.json"));
+    }
     const projectPosts = await Promise.all(
-        PROJECTS.map((handle) => ctx.readJson(`${handle}/posts.json`)),
+        PROJECTS.map(async (handle) => {
+            const file = `${handle}/posts.json`;
+            if (await ctx.hasFile(file)) {
+                return ctx.readJson(`${handle}/posts.json`)
+            } else {
+                return [];
+            }
+        }),
     ) as IPost[][];
 
     const allPosts = [

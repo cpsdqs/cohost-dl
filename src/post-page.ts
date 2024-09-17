@@ -188,14 +188,16 @@ export async function loadPostPage(ctx: CohostContext, url: string) {
 
     const rewriteData = await rewritePost(ctx, post, FROM_POST_PAGE_TO_ROOT);
 
-    const editedProjects = pageState.query<{ projects: IProject[] }>(
-        "projects.listEditedProjects",
-    );
-    for (const project of editedProjects.projects) {
-        Object.assign(
-            rewriteData.urls,
-            await rewriteProject(ctx, project, FROM_POST_PAGE_TO_ROOT),
+    if (false) {
+        const editedProjects = pageState.query<{ projects: IProject[] }>(
+            "projects.listEditedProjects",
         );
+        for (const project of editedProjects.projects) {
+            Object.assign(
+                rewriteData.urls,
+                await rewriteProject(ctx, project, FROM_POST_PAGE_TO_ROOT),
+            );
+        }
     }
 
     Object.assign(

@@ -1108,7 +1108,11 @@ export async function generateFrontend(
         plugins: [
             {
                 name: "cohost-dl-resolve",
-                load(id) {
+                load(originalId) {
+                    const id = Deno.build.os === "windows"
+                        ? originalId.replace(/\\/g, '/')
+                        : originalId;
+
                     if (id === "@internal/nothing") return "";
 
                     if (id === `@internal/${entryName}`) {
@@ -1157,7 +1161,11 @@ export async function generateFrontend(
 
                     return null;
                 },
-                async resolveId(originalId, importer) {
+                async resolveId(originalId, originalImporter) {
+                    const importer = Deno.build.os === "windows"
+                        ? originalImporter?.replace(/\\/g, '/')
+                        : originalImporter;
+
                     let resolved: string | null = null;
 
                     let id = originalId;
@@ -1329,7 +1337,10 @@ export async function generateFrontend(
             {
                 name: "cohost-dl-transform",
                 transform(code, originalId) {
-                    const id = path.relative(realSrcDir, originalId);
+                    const id2 = path.relative(realSrcDir, originalId);
+                    const id = Deno.build.os === "windows"
+                        ? id2.replace(/\\/g, '/')
+                        : id2;
 
                     if (patches[id]) {
                         for (const patch of patches[id]) {

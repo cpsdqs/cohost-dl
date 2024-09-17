@@ -7,12 +7,12 @@ Downloads posts onto your computer from cohost.org, which is shutting down.
 - Legal: using this software does not somehow grant you a license to re-publish posts and comments from other people
 
 ## Usage
-1. `cp CONFIG.example.ts CONFIG.ts`
+1. Copy `CONFIG.example.ts` to `CONFIG.ts`
 2. edit `CONFIG.ts` appropriately
 3. Install Deno
 4. `./run.sh`
-    - if you’re using a system that doesn’t support bash,
-      you can probably just copy the `deno run ...` command from this file and run it directly.
+    - if you’re using a system that doesn’t support Bash, such as Windows,
+      you can just copy the `deno run ...` command from this file and run it directly.
 
 It's safe to interrupt and re-start the script at any time.
 Things that have already been downloaded will not be downloaded again,
