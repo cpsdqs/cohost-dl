@@ -16,6 +16,9 @@ import { loadCohostSource } from "./src/cohost-source.ts";
 import { generateAllScripts } from "./src/scripts/index.ts";
 import { rewritePost } from "./src/post.ts";
 import { generateAllProjectIndices } from "./src/project-index.ts";
+import { checkForUpdates } from "./src/changelog.ts";
+
+await checkForUpdates();
 
 const ctx = new CohostContext(COOKIE, "out");
 await ctx.init();
