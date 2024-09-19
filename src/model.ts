@@ -95,8 +95,14 @@ export interface IPostBlockAttachment {
     attachment: IAttachment;
 }
 
+export interface IPostBlockAttachmentRow {
+    type: "attachment-row";
+    attachments: IPostBlockAttachment[];
+}
+
 export type IPostBlock =
     | IPostBlockAttachment
+    | IPostBlockAttachmentRow
     | IPostBlockAsk
     | IPostBlockMarkdown;
 

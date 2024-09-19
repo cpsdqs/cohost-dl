@@ -742,7 +742,10 @@ function header(ctx: CohostContext) {
         return Object.fromEntries(
             Object.entries(data).map((
                 [k, v],
-            ) => [k, ctx.propsForResourceURL(v)!.filePath]),
+            ) => [
+                k,
+                ctx.propsForResourceURL(v)!.filePath.replace(/^static\//, ""),
+            ]),
         );
     };
 
@@ -1009,6 +1012,17 @@ const PATCHES = (base: string): Record<string, Patch[]> => ({
             find: ".use(rehypeSanitize, effectiveSchema)",
             replace:
                 ".use(rehypeSanitize, effectiveSchema).use(rewriteCdnUrls)",
+        },
+    ],
+    "shared/types/asks.ts": [
+        {
+            // rewritten URLs don't pass this schema anymore
+            find: "avatarURL: z.string().url(),",
+            replace: "avatarURL: z.string(),",
+        },
+        {
+            find: "avatarPreviewURL: z.string().url(),",
+            replace: "avatarPreviewURL: z.string(),",
         },
     ],
 

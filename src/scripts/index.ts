@@ -75,7 +75,7 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
             "shared/sitemap.ts": [
                 {
                     find: `if (path.startsWith("/srv/release/server/"))`,
-                    replace: "return `../${path}`; if (false)",
+                    replace: "return `../static/${path}`; if (false)",
                 },
                 {
                     find: "mainDomain(patterns.public.project.mainAppProfile, args)",

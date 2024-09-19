@@ -1,5 +1,5 @@
 import { CohostContext, encodeFilePathURI } from "./context.ts";
-import { IPost } from "./model.ts";
+import { IAttachment, IPost } from "./model.ts";
 import {
     generate as cssGenerate,
     parse as cssParse,
@@ -69,15 +69,44 @@ export async function rewritePost(
     }
 
     await Promise.all(post.blocks.map(async (block) => {
-        if (block.type === "attachment") {
+        const attachments: IAttachment[] = [];
+
+        if (block.type === "attachment-row") {
+            attachments.push(
+                ...block.attachments.map((item) => item.attachment),
+            );
+        } else if (block.type === "attachment") {
+            attachments.push(block.attachment);
+        } else if (block.type === "ask") {
+            const proj = block.ask.askingProject;
+            for (
+                const field of ["avatarURL", "avatarPreviewURL"] as (
+                    | "avatarURL"
+                    | "avatarPreviewURL"
+                )[]
+            ) {
+                if (proj?.[field]) {
+                    const filePath = await ctx.loadResourceToFile(
+                        proj[field],
+                    );
+                    if (filePath) {
+                        const url = encodeFilePathURI(base + filePath);
+                        rewriteData.urls[proj[field]] = url;
+                        proj[field] = url;
+                    }
+                }
+            }
+        }
+
+        for (const attachment of attachments) {
             const filePath = await ctx.loadResourceToFile(
-                block.attachment.fileURL,
+                attachment.fileURL,
             );
             if (filePath) {
                 const url = encodeFilePathURI(base + filePath);
-                rewriteData.urls[block.attachment.fileURL] = url;
-                block.attachment.fileURL = url;
-                block.attachment.previewURL = url;
+                rewriteData.urls[attachment.fileURL] = url;
+                attachment.fileURL = url;
+                attachment.previewURL = url;
             }
         }
     }));
