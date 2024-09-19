@@ -950,7 +950,8 @@ const PATCHES = (base: string): Record<string, Patch[]> => ({
     "preact/components/posts/blocks/attachments/audio.tsx": [
         {
             find: "pathEntries = new URL(block.attachment.fileURL)",
-            replace: `pathEntries = new URL(block.attachment.fileURL, location.href)`,
+            replace:
+                `pathEntries = new URL(block.attachment.fileURL, location.href)`,
         },
     ],
     "preact/components/partials/project-avatar.tsx": [
@@ -1025,7 +1026,7 @@ export interface FrontendScript {
     additionalPatches?: Record<string, Patch[]>;
 }
 
-export async  function clearDist(ctx: CohostContext) {
+export async function clearDist(ctx: CohostContext) {
     try {
         await Deno.remove(ctx.getCleanPath(DIST_PATH), { recursive: true });
     } catch {
@@ -1108,7 +1109,9 @@ export async function generateFrontend(
     const entryName = script.name;
 
     const patches = PATCHES(script.base);
-    if (script.additionalPatches) Object.assign(patches, script.additionalPatches);
+    if (script.additionalPatches) {
+        Object.assign(patches, script.additionalPatches);
+    }
 
     const bundle = await rollup({
         input: path.join(import.meta.dirname, `scripts/${entryName}.tsx`),
@@ -1117,7 +1120,7 @@ export async function generateFrontend(
                 name: "cohost-dl-resolve",
                 load(originalId) {
                     const id = Deno.build.os === "windows"
-                        ? originalId.replace(/\\/g, '/')
+                        ? originalId.replace(/\\/g, "/")
                         : originalId;
 
                     if (id === "@internal/nothing") return "";
@@ -1170,7 +1173,7 @@ export async function generateFrontend(
                 },
                 async resolveId(originalId, originalImporter) {
                     const importer = Deno.build.os === "windows"
-                        ? originalImporter?.replace(/\\/g, '/')
+                        ? originalImporter?.replace(/\\/g, "/")
                         : originalImporter;
 
                     let resolved: string | null = null;
@@ -1346,7 +1349,7 @@ export async function generateFrontend(
                 transform(code, originalId) {
                     const id2 = path.relative(realSrcDir, originalId);
                     const id = Deno.build.os === "windows"
-                        ? id2.replace(/\\/g, '/')
+                        ? id2.replace(/\\/g, "/")
                         : id2;
 
                     if (patches[id]) {

@@ -254,11 +254,15 @@ export class CohostContext {
         }
     }
 
-    async getCachedFileForPostURL(url: string): Promise<string | null> {
+    getCachedFileForPostURL(url: string): Promise<string | null> {
         const match = url.match(POST_URL_REGEX);
-        if (!match) return null;
+        if (!match) return Promise.resolve(null);
         const [, projectHandle, id] = match;
 
+        return this.getCachedFileForPost(projectHandle, id);
+    }
+
+    async getCachedFileForPost(projectHandle: string, id: string | number): Promise<string | null> {
         const projectDir = path.join(this.getCleanPath(projectHandle), "post");
         try {
             for await (const item of Deno.readDir(projectDir)) {

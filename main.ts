@@ -15,7 +15,7 @@ import { readDataPortabilityArchiveItems } from "./src/data-portability-archive.
 import { loadCohostSource } from "./src/cohost-source.ts";
 import { generateAllScripts } from "./src/scripts/index.ts";
 import { rewritePost } from "./src/post.ts";
-import { generateAllProjectIndices } from "./src/project-index.ts";
+import { generateAllIndices } from "./src/post-index.ts";
 import { checkForUpdates } from "./src/changelog.ts";
 
 await checkForUpdates();
@@ -140,7 +140,7 @@ const errors: { url: string; error: Error }[] = [];
 }
 
 {
-    await generateAllProjectIndices(ctx);
+    await generateAllIndices(ctx);
 }
 
 await ctx.finalize();

@@ -7,7 +7,7 @@ import {
 import { CohostContext } from "../context.ts";
 
 export const POST_PAGE_SCRIPT_PATH = `${DIST_PATH}/post-page.js`;
-export const PROJECT_INDEX_SCRIPT_PATH = `${DIST_PATH}/project-index.js`;
+export const PROJECT_INDEX_SCRIPT_PATH = `${DIST_PATH}/post-index.js`;
 
 export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
     const POST_PAGE: FrontendScript = {
@@ -24,17 +24,17 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
         }
     };
 
-    const PROJECT_INDEX: FrontendScript = {
-        name: "project-index",
-        entryPoint: "project-index.tsx",
+    const POST_INDEX: FrontendScript = {
+        name: "post-index",
+        entryPoint: "post-index.tsx",
         base: "..",
         additionalPatches: {
             "preact/components/partials/post-tags.tsx": [
                 {
                     find: "const isProfilePage = useMatch",
                     replace: `return {
-                            pageType: "profile",
-                            handle: window.cohostDL.project.handle,
+                            pageType: window.cohostDL.project ? "profile" : false,
+                            handle: window.cohostDL.project?.handle,
                             tagSlug: undefined,
                         };
                         const isProfilePage = useMatch`,
@@ -75,13 +75,17 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
             "shared/sitemap.ts": [
                 {
                     find: `if (path.startsWith("/srv/release/server/"))`,
-                    replace: "return `../static/${path}`; if (false)",
+                    replace: "return `../${path}`; if (false)",
+                },
+                {
+                    find: "mainDomain(patterns.public.project.mainAppProfile, args)",
+                    replace: "`../${args.projectHandle}/index.html`"
                 }
             ],
         },
     };
 
     await clearDist(ctx);
-    await generateFrontend(ctx, srcDir, PROJECT_INDEX);
+    await generateFrontend(ctx, srcDir, POST_INDEX);
     await generateFrontend(ctx, srcDir, POST_PAGE);
 }

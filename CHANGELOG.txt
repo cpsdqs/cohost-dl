@@ -1,5 +1,6 @@
 url=https://raw.githubusercontent.com/cpsdqs/cohost-dl/main/CHANGELOG.txt
 
+* 2024-09-19: The Cohost Archive Global Feed
 * 2024-09-19: add better project index pages with pagination
 * 2024-09-17: add update checking because it won't be possible to post on Cohost anymore soon
 * 2024-09-17: add Microsoft Windows compatibility

@@ -40,12 +40,13 @@ import MiniSearch from "@internal/minisearch";
 import { IPostIndexedData, PAGE_STRIDE, PostSearchFlags } from "./shared.ts";
 import type { IPost, IProject } from "../model.ts";
 
-const { project, rewriteData, searchTreeIndex, trpcState } = JSON
+const { project, rewriteData, chunks, searchTreeIndex, trpcState } = JSON
     .parse(
-        document.querySelector("#project-index-data").innerHTML,
+        document.querySelector("#post-index-data").innerHTML,
     ) as {
-        project: IProject;
-        rewriteData: { base: string; urls: Record<string, string> };
+        project?: IProject;
+        rewriteData?: { base: string; urls: Record<string, string> };
+        chunks?: Record<string, string>;
         searchTreeIndex: Record<string, number[]>;
         trpcState: object;
     };
@@ -53,6 +54,13 @@ const { project, rewriteData, searchTreeIndex, trpcState } = JSON
 const allPostIds = [
     ...new Set(Object.values(searchTreeIndex).flatMap((id) => id)),
 ].sort((a, b) => b - a);
+
+const allProjects = [
+    ...new Set(
+        Object.values(chunks ?? {})
+            .map((chunk) => chunk.split("~")[0]),
+    ),
+].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
 const postListChunkPromises = new Map<string, {
     promise: Promise<IPost[]>;
@@ -67,7 +75,8 @@ let postSearchIndexPromise: null | {
 
 window.cohostDL = {
     project,
-    rewriteData,
+    rewriteData: rewriteData ??
+        { base: "https://cohost.org/a/post/a", urls: {} },
     postSearchIndex(data: string) {
         MiniSearch.loadJSONAsync(data, {
             idField: "id",
@@ -84,7 +93,7 @@ window.cohostDL = {
         items: IPost[],
         newRwData: Record<string, string>,
     ) {
-        Object.assign(rewriteData, newRwData);
+        Object.assign(window.cohostDL.rewriteData, newRwData);
         postListChunkPromises.get(id)!.resolve(items);
     },
 };
@@ -118,13 +127,15 @@ function loadPostListChunk(id: string): Promise<IPost[]> {
     const existingEntry = postListChunkPromises.get(id);
     if (existingEntry) return existingEntry.promise;
 
+    const project = id.split("~")[0];
+
     const entry = {
         promise: null as unknown as Promise<IPost[]>,
         resolve: (() => null) as ((items: IPost[]) => void),
     };
     const promise = new Promise<IPost[]>((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = `cdl-chunk~${id}.js`;
+        script.src = `../${project}/cdl-chunk~${id}.js`;
         script.addEventListener(
             "error",
             () => reject(new Error(`failed to load chunk ${id}`)),
@@ -348,6 +359,7 @@ function usePostListChunks(requestedChunks: string[]): {
     };
 }
 
+const globalChunks = chunks;
 function useFilteredPosts(search: IPostSearch) {
     const useSearch = !!search.query ||
         !deepEq(search.filter, POST_FILTER_NONE);
@@ -419,7 +431,7 @@ function useFilteredPosts(search: IPostSearch) {
 
             maxPage = Math.max(
                 0,
-                Math.floor((results.length - 1) / PAGE_STRIDE),
+                Math.floor((treeResults.length - 1) / PAGE_STRIDE),
             );
         } else {
             isLoading = isLoading || searchIndexLoading;
@@ -427,8 +439,19 @@ function useFilteredPosts(search: IPostSearch) {
         }
     } else {
         posts = allPostIds.slice(start, end);
-        // FIXME: really unreliable
-        requestedChunks = [`${project.handle}~${search.page}`];
+
+        if (project) {
+            // FIXME: really unreliable
+            requestedChunks = [`${project.handle}~${search.page}`];
+        } else {
+            for (const post of posts) {
+                const chunk = globalChunks[post];
+                if (chunk && !requestedChunks.includes(chunk)) {
+                    requestedChunks.push(chunk);
+                }
+            }
+        }
+
         maxPage = Math.floor((allPostIds.length - 1) / PAGE_STRIDE);
     }
 
@@ -489,6 +512,14 @@ const cdlStyles = css`
         }
     }
 
+    .cdl-search-box-container {
+        padding-left: 5.5rem;
+
+        &.is-condensed {
+            padding-left: 0;
+        }
+    }
+
     .cdl-search-box {
         margin-top: 1rem;
         margin-bottom: 1rem;
@@ -534,6 +565,7 @@ const cdlStyles = css`
 
         > .i-tags {
             grid-column: 1 / 3;
+            padding: 0.25rem 0;
 
             .co-filled-button {
                 background: rgb(var(--cdl-tag-bg));
@@ -639,6 +671,15 @@ const cdlStyles = css`
                 min-width: 3em;
                 font-variant-numeric: tabular-nums;
                 text-align: center;
+
+                &.is-editor {
+                    background: none;
+                    padding: 0;
+                    width: 6em;
+                    background: none;
+                    color: inherit;
+                    border-radius: 0.25rem;
+                }
             }
         }
     }
@@ -648,6 +689,68 @@ const cdlStyles = css`
         place-content: center;
         padding: 1rem;
         color: rgb(var(--cdl-fg));
+    }
+
+    .cdl-main {
+        width: 100%;
+        max-width: 80em;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 2fr 1fr;
+        gap: 2rem;
+
+        > .cdl-all-projects {
+            background: rgb(var(--cdl-bg));
+            color: rgb(var(--cdl-fg));
+            box-shadow: var(--cdl-shadow);
+            margin: 1rem;
+            border-radius: 0.5rem;
+            min-width: 0;
+            max-height: calc(100svh - 6rem);
+            display: grid;
+
+            > h3 {
+                padding: 0.5rem 0.75rem;
+                font-size: 1.2rem;
+                font-weight: bold;
+            }
+
+            > ul {
+                overflow: hidden auto;
+            }
+
+            > ul > li > a {
+                display: block;
+                padding: 0 0.75rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+
+                &:hover {
+                    text-decoration: underline;
+                }
+            }
+        }
+
+        > .cdl-all-posts {
+            min-width: 0;
+        }
+    }
+
+    @media (max-width: 1023px) {
+        .cdl-main {
+            grid-template-columns: 1fr 2fr 0;
+        }
+    }
+
+    @media (max-width: 769px) {
+        .cdl-main {
+            grid-template-columns: 1fr;
+
+            > .cdl-all-projects {
+                grid-row: 2;
+            }
+        }
     }
 
     @keyframes cdl-flag-filter-settings-in {
@@ -799,6 +902,8 @@ function SearchBox({ search, onChange, maxPage }: {
         );
     }
 
+    const [isEditingPage, setEditingPage] = useState(false);
+
     return (
         <div className="cdl-search-box">
             <div className="i-search">
@@ -815,7 +920,7 @@ function SearchBox({ search, onChange, maxPage }: {
             </div>
             <div className="i-tags">
                 <TokenInput
-                    className="co-editable-body w-full p-0 px-3 leading-none"
+                    className="co-editable-body w-full p-0 px-2 leading-none"
                     TokenIcon={HashtagIcon}
                     tokens={search.filter.tags}
                     setTokens={(tags) => onFilterChange({ tags })}
@@ -854,7 +959,42 @@ function SearchBox({ search, onChange, maxPage }: {
                 >
                     <ChevronLeftIcon className="i-icon" />
                 </button>
-                <div className="i-page">{search.page + 1}/{maxPage + 1}</div>
+                {isEditingPage
+                    ? (
+                        <input
+                            autoFocus
+                            className="i-page is-editor"
+                            type="number"
+                            defaultValue={search.page + 1}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") e.target.blur();
+                            }}
+                            onFocus={(e) => {
+                                e.target.select();
+                            }}
+                            onBlur={(e) => {
+                                const page = parseInt(e.target.value, 10);
+                                if (Number.isFinite(page)) {
+                                    onChange({
+                                        page: Math.min(
+                                            Math.max(0, page - 1),
+                                            maxPage,
+                                        ),
+                                    });
+                                }
+                                setEditingPage(false);
+                            }}
+                        />
+                    )
+                    : (
+                        <button
+                            type="button"
+                            className="i-page"
+                            onClick={() => setEditingPage(true)}
+                        >
+                            {search.page + 1}/{maxPage + 1}
+                        </button>
+                    )}
                 <button
                     className="i-page-button"
                     type="button"
@@ -895,7 +1035,7 @@ function useDebounced<T>(value: T): T {
     return debounced;
 }
 
-function FilteredPostFeed() {
+function FilteredPostFeed({ condensed }: { condensed?: boolean }) {
     const displayPrefs = useDisplayPrefs();
     const [search, setSearch] = useState({
         page: 0,
@@ -906,17 +1046,29 @@ function FilteredPostFeed() {
     const { isLoading, errors, posts, maxPage } = useFilteredPosts(search);
     const hasNextPage = search.page < maxPage;
 
+    const postListTop = useRef<HTMLDivElement>(null);
+
     const onPageBack = useCallback((e: MouseEvent) => {
         e.preventDefault();
         setSearch((search) => ({
             ...search,
             page: Math.max(0, search.page - 1),
         }));
+
+        postListTop.current?.scrollIntoView({
+            block: "nearest",
+            behavior: "auto",
+        });
     }, []);
 
     const onPageForward = useCallback((e: MouseEvent) => {
         e.preventDefault();
         setSearch((search) => ({ ...search, page: search.page + 1 }));
+
+        postListTop.current?.scrollIntoView({
+            block: "nearest",
+            behavior: "auto",
+        });
     }, []);
 
     useEffect(() => {
@@ -927,17 +1079,24 @@ function FilteredPostFeed() {
 
     return (
         <div>
-            <SearchBox
-                search={search}
-                onChange={(changes) =>
-                    setSearch((search) => ({ ...search, ...changes }))}
-                maxPage={maxPage}
-            />
+            <div
+                className={"cdl-search-box-container" +
+                    (condensed ? "is-condensed" : "")}
+            >
+                <SearchBox
+                    search={search}
+                    onChange={(changes) =>
+                        setSearch((search) => ({ ...search, ...changes }))}
+                    maxPage={maxPage}
+                />
+            </div>
             <div className="post-list">
+                <div className="post-list-top" ref={postListTop} />
+
                 {posts.map((post) => (
                     <div className="post-item my-4" key={post.postId}>
                         <PostPreview
-                            condensed
+                            condensed={condensed}
                             viewModel={post}
                             displayPrefs={displayPrefs}
                             highlightedTags={NO_TAGS}
@@ -969,7 +1128,7 @@ function FilteredPostFeed() {
                     : null}
             </div>
             <PaginationEggs
-                condensed
+                condensed={condensed}
                 backLink={search.page > 0 ? "#" : null}
                 forwardLink={hasNextPage ? "#" : null}
                 backOnClick={onPageBack}
@@ -1000,10 +1159,59 @@ function ProjectIndex() {
                             canAccessPermissions={ALL_VISIBLE}
                         >
                             <UserInfoContext.Provider value={GENERIC_OBSERVER}>
-                                <FilteredPostFeed />
+                                <FilteredPostFeed condensed />
                             </UserInfoContext.Provider>
                         </ProfileView>
                     </div>
+                </LightboxHost>
+            </div>
+        </div>
+    );
+}
+
+function AllPosts() {
+    const [condensed, setCondensed] = useState(window.innerWidth < 1024);
+
+    useEffect(() => {
+        const updateCondensed = () => setCondensed(window.innerWidth < 1024);
+        window.addEventListener("resize", updateCondensed);
+        return () => {
+            window.removeEventListener("resize", updateCondensed);
+        };
+    }, []);
+
+    return (
+        <div className="flex flex-col">
+            <div className="h-16 bg-foreground text-text">
+                <div className="container mx-auto grid h-full items-center px-2">
+                    <CohostLogo
+                        className="h-8"
+                        role="img"
+                        aria-label="Cohost Archive"
+                    />
+                </div>
+            </div>
+            <div className="flex flex-grow flex-col pb-20">
+                <LightboxHost>
+                    <main className="cdl-main">
+                        <div className="cdl-all-projects">
+                            <h3>Index</h3>
+                            <ul>
+                                {allProjects.map((project) => (
+                                    <li>
+                                        <a href={`../${project}/index.html`}>
+                                            @{project}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="cdl-all-posts">
+                            <UserInfoContext.Provider value={GENERIC_OBSERVER}>
+                                <FilteredPostFeed condensed={condensed} />
+                            </UserInfoContext.Provider>
+                        </div>
+                    </main>
                 </LightboxHost>
             </div>
         </div>
@@ -1027,7 +1235,8 @@ function App({ children }) {
                     url: sitemap.public.apiV1.trpc().toString(),
                     maxURLLength: 2083,
                     fetch(url, options) {
-                        return new Promise(() => {});
+                        return new Promise(() => {
+                        });
                     },
                 }),
             ],
@@ -1050,7 +1259,8 @@ const root = ReactDOM.createRoot(document.querySelector("#app"));
 import("@/i18n").then(() => {
     root.render(
         <App>
-            <ProjectIndex />
+            {project ? <ProjectIndex /> : null}
+            {chunks ? <AllPosts /> : null}
         </App>,
     );
 });

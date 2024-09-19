@@ -21,6 +21,8 @@ export interface IPostSearchData {
     flags: PostSearchFlags;
     /** chunk where this post can be found */
     chunk: string;
+    /** if true, this post is the root of the post tree as stored in this chunk */
+    isRoot: boolean;
 }
 
 export type IPostIndexedData = Pick<IPostSearchData, 'author' | 'tags' | 'published' | 'flags' | 'chunk'>;

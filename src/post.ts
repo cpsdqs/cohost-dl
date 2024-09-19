@@ -142,6 +142,23 @@ export async function rewritePost(
                         }
                     }
                 }
+
+                if (node.tagName === "CustomEmoji") {
+                    const resolved = new URL(
+                        node.properties.url,
+                        post.singlePostPageUrl,
+                    );
+                    if (resolved.protocol === "https:") {
+                        const filePath = await ctx.loadResourceToFile(
+                            resolved.toString(),
+                        );
+                        if (filePath) {
+                            const url = encodeFilePathURI(base + filePath);
+                            rewriteData.urls[node.properties.url] = url;
+                            node.properties.url = url;
+                        }
+                    }
+                }
             }
 
             if ("children" in node) {
