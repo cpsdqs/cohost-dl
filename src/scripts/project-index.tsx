@@ -1,5 +1,6 @@
 import React, {
     MouseEvent,
+    ReactNode,
     useCallback,
     useEffect,
     useRef,
@@ -11,8 +12,17 @@ import {
     QueryClient,
     QueryClientProvider,
 } from "@tanstack/react-query";
-import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
+import {
+    EyeIcon,
+    EyeSlashIcon,
+    MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
+import {
+    ChevronDownIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    HashtagIcon,
+} from "@heroicons/react/24/solid";
 import { useSSR } from "react-i18next";
 import { httpBatchLink } from "@trpc/client/links/httpBatchLink";
 import sitemap from "@/shared/sitemap";
@@ -25,6 +35,7 @@ import { LightboxHost } from "@/preact/components/lightbox";
 import { CohostLogo } from "@/preact/components/elements/icon";
 import { PaginationEggs } from "@/preact/components/partials/pagination-eggs";
 import { Loading } from "@/preact/components/loading";
+import { TokenInput } from "@/preact/components/token-input";
 import MiniSearch from "@internal/minisearch";
 import { IPostIndexedData, PAGE_STRIDE, PostSearchFlags } from "./shared.ts";
 import type { IPost, IProject } from "../model.ts";
@@ -145,7 +156,8 @@ const GENERIC_OBSERVER = {
 };
 
 interface IPostFilter {
-    asks: null | boolean;
+    tags: string[];
+    ask: null | boolean;
     adult: null | boolean;
     reply: null | boolean;
     share: null | boolean;
@@ -153,6 +165,26 @@ interface IPostFilter {
     editor: null | boolean;
     liked: null | boolean;
 }
+
+const FLAG_FILTERS: (keyof IPostFilter)[] = [
+    "liked",
+    "ask",
+    "reply",
+    "share",
+    "adult",
+    "pinned",
+    "editor",
+];
+
+const FLAG_FILTER_LABELS: Partial<Record<keyof IPostFilter, string>> = {
+    liked: "liked",
+    ask: "asks",
+    reply: "replies",
+    share: "shares",
+    adult: "adult content",
+    pinned: "pinned",
+    editor: "editable",
+};
 
 function postIndexedDataFilter(item: IPostIndexedData, filter: IPostFilter) {
     const flagFilter = (filter: null | boolean, flag: PostSearchFlags) => {
@@ -163,7 +195,7 @@ function postIndexedDataFilter(item: IPostIndexedData, filter: IPostFilter) {
         return false;
     };
 
-    if (flagFilter(filter.asks, PostSearchFlags.AskResponse)) return false;
+    if (flagFilter(filter.ask, PostSearchFlags.AskResponse)) return false;
     if (flagFilter(filter.adult, PostSearchFlags.AdultContent)) return false;
     if (flagFilter(filter.reply, PostSearchFlags.Reply)) return false;
     if (flagFilter(filter.share, PostSearchFlags.Share)) return false;
@@ -171,11 +203,23 @@ function postIndexedDataFilter(item: IPostIndexedData, filter: IPostFilter) {
     if (flagFilter(filter.editor, PostSearchFlags.Editor)) return false;
     if (flagFilter(filter.liked, PostSearchFlags.Liked)) return false;
 
+    if (filter.tags.length) {
+        const postTags = item.tags.split("\n");
+        if (filter.tags.some((tag) => !postTags.includes(tag))) return false;
+    }
+
     return true;
 }
 
+function shouldFilterOnlyUseTreePosts(filter: IPostFilter) {
+    const isFlagNonZero = (flag: null | boolean) => flag !== null;
+
+    return isFlagNonZero(filter.share) || isFlagNonZero(filter.reply);
+}
+
 const POST_FILTER_NONE: IPostFilter = {
-    asks: null,
+    tags: [],
+    ask: null,
     adult: null,
     reply: null,
     share: null,
@@ -211,7 +255,6 @@ function deepEq(a: unknown, b: unknown) {
 interface IPostSearch {
     page: number;
     query: string;
-    exact: boolean;
     filter: IPostFilter;
 }
 
@@ -328,20 +371,52 @@ function useFilteredPosts(search: IPostSearch) {
 
     if (useSearch) {
         if (searchIndex) {
+            const onlyUseTreePosts = shouldFilterOnlyUseTreePosts(
+                search.filter,
+            );
+
             const results = searchIndex.search(
                 search.query || MiniSearch.wildcard,
                 {
-                    fuzzy: search.exact ? 0 : 0.2,
-                    prefix: !search.exact,
+                    fields: ["author", "contents"],
+                    fuzzy: (token) => token.length > 5 ? 0.1 : 0,
+                    prefix: true,
                     filter: (item: IPostIndexedData) =>
                         postIndexedDataFilter(item, search.filter),
+                    combineWith: "AND",
                 },
             );
 
-            const searchResults = results.slice(start, end);
+            const treeResults: { id: number; chunk: string }[] = [];
+            const includedPosts = new Set<number>();
 
+            for (const item of results) {
+                const post = item.id;
+                const treePosts = searchTreeIndex[post] ?? [];
+
+                if (treePosts.includes(post)) {
+                    if (!includedPosts.has(post)) {
+                        treeResults.push(item);
+                        includedPosts.add(post);
+                    }
+                    continue;
+                } else if (onlyUseTreePosts) {
+                    continue;
+                }
+
+                const alreadyIncluded = treePosts.some((post) =>
+                    includedPosts.has(post)
+                );
+                if (!alreadyIncluded) {
+                    treeResults.push({ id: treePosts[0], chunk: item.chunk });
+                    includedPosts.add(treePosts[0]);
+                }
+            }
+
+            const searchResults = treeResults.slice(start, end);
             posts = searchResults.map((result) => result.id);
             requestedChunks = searchResults.map((result) => result.chunk);
+
             maxPage = Math.max(
                 0,
                 Math.floor((results.length - 1) / PAGE_STRIDE),
@@ -393,6 +468,11 @@ const cdlStyles = css`
         --cdl-bg: 255 249 242;
         --cdl-fg: 0 0 0;
         --cdl-shadow: 0px 4px 5px rgba(0, 0, 0, .14), 0px 1px 10px rgba(0, 0, 0, .12), 0px 2px 4px rgba(0, 0, 0, .2);
+
+        --cdl-tag-bg: 131 37 79;
+        --cdl-tag-fg: 255 249 242;
+
+        --cdl-accent: 131 37 79;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -401,6 +481,11 @@ const cdlStyles = css`
             --cdl-outline: 127 127 127;
             --cdl-fg: 240 240 240;
             --cdl-shadow: 0 0 0 1px #fff3, 0px 4px 5px rgba(0, 0, 0, .14), 0px 1px 10px rgba(0, 0, 0, .12), 0px 2px 4px rgba(0, 0, 0, .2);
+
+            --cdl-tag-bg: 229 143 62;
+            --cdl-tag-fg: 25 25 25;
+
+            --cdl-accent: 229 143 62;
         }
     }
 
@@ -410,11 +495,14 @@ const cdlStyles = css`
         background: rgb(var(--cdl-bg));
         color: rgb(var(--cdl-fg));
         box-shadow: var(--cdl-shadow);
+        grid-template-columns: auto auto;
         border-radius: 0.5rem;
         display: grid;
+        position: relative;
 
         > .i-search {
             display: grid;
+            grid-column: 1 / 3;
             grid-template-columns: auto 1fr;
             align-items: center;
             border-radius: 0.5rem;
@@ -440,7 +528,84 @@ const cdlStyles = css`
             }
 
             &:focus-within {
-                box-shadow: 0 0 0 0.25rem rgb(var(--color-cherry));
+                box-shadow: 0 0 0 0.25rem rgb(var(--cdl-accent));
+            }
+        }
+
+        > .i-tags {
+            grid-column: 1 / 3;
+
+            .co-filled-button {
+                background: rgb(var(--cdl-tag-bg));
+                color: rgb(var(--cdl-tag-fg));
+            }
+        }
+
+        > .i-flag-filters {
+            > .i-button {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.25rem 0.5rem;
+                padding: 0 0.5rem;
+                transition: opacity 0.2s;
+
+                &:active {
+                    opacity: 0.5;
+                    transition: none;
+                }
+
+                > .i-flag,
+                > .i-no-flags {
+                    display: grid;
+                    grid-template-columns: auto auto;
+                    align-items: center;
+                    gap: 0.25rem;
+
+                    > .i-icon {
+                        height: 1rem;
+                    }
+                }
+            }
+
+            > .i-settings {
+                animation: cdl-flag-filter-settings-in 0.2s;
+                position: absolute;
+                max-width: 100%;
+                background: rgb(var(--cdl-bg));
+                color: rgb(var(--cdl-fg));
+                box-shadow: var(--cdl-shadow);
+                border-radius: 0.75rem;
+                z-index: 10;
+                display: grid;
+                grid-template-columns: auto auto;
+                gap: 0.25rem 0.5rem;
+                padding: 0.5rem;
+
+                > .i-item {
+                    display: contents;
+
+                    > .i-segmented {
+                        display: grid;
+                        background: rgb(var(--cdl-fg) / 0.1);
+                        grid-template-columns: 1fr 1fr 1fr;
+                        border-radius: 0.25rem;
+
+                        > button {
+                            padding: 0 0.25rem;
+                            border: 1px solid transparent;
+
+                            &:not(.is-active) + button:not(.is-active) {
+                                border-left: 1px solid rgb(var(--cdl-fg) / 0.1);
+                            }
+
+                            &.is-active {
+                                border-radius: 0.25rem;
+                                background: rgb(var(--cdl-tag-bg));
+                                color: rgb(var(--cdl-tag-fg));
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -484,6 +649,12 @@ const cdlStyles = css`
         padding: 1rem;
         color: rgb(var(--cdl-fg));
     }
+
+    @keyframes cdl-flag-filter-settings-in {
+        from {
+            opacity: 0
+        }
+    }
 `;
 
 {
@@ -492,11 +663,55 @@ const cdlStyles = css`
     document.head.append(style);
 }
 
+function FlagFilterSettings(
+    { filter, onChange }: {
+        filter: IPostFilter;
+        onChange: (filter: Partial<IPostFilter>) => void;
+    },
+) {
+    return (
+        <>
+            {FLAG_FILTERS.map((flag) => (
+                <div className="i-item" key={flag}>
+                    <div className="i-label">
+                        {FLAG_FILTER_LABELS[flag]}
+                    </div>
+                    <div className="i-segmented">
+                        <button
+                            className={filter[flag] === null ? "is-active" : ""}
+                            onClick={() => onChange({ [flag]: null })}
+                        >
+                            show
+                        </button>
+                        <button
+                            className={filter[flag] === false
+                                ? "is-active"
+                                : ""}
+                            onClick={() => onChange({ [flag]: false })}
+                        >
+                            hide
+                        </button>
+                        <button
+                            className={filter[flag] === true ? "is-active" : ""}
+                            onClick={() => onChange({ [flag]: true })}
+                        >
+                            only
+                        </button>
+                    </div>
+                </div>
+            ))}
+        </>
+    );
+}
+
 function SearchBox({ search, onChange, maxPage }: {
     search: IPostSearch;
     onChange: (search: Partial<IPostSearch>) => void;
     maxPage: number;
 }) {
+    const onFilterChange = (filter: Partial<IPostFilter>) =>
+        onChange({ filter: { ...search.filter, ...filter } });
+
     const [query, setQuery] = useState(search.query);
     const [isSearchFocused, setSearchFocused] = useState(false);
 
@@ -508,6 +723,81 @@ function SearchBox({ search, onChange, maxPage }: {
             onChange({ query: debouncedQuery });
         }
     }, [isSearchFocused, debouncedQuery]);
+
+    const [wantsSearchIndex, setWantsSearchIndex] = useState(false);
+    const { searchIndex } = useSearchIndex(wantsSearchIndex);
+
+    const onTagSearch = (query: string) => {
+        if (!searchIndex) {
+            if (query) {
+                setTimeout(() => {
+                    setWantsSearchIndex(true);
+                }, 10);
+            }
+            return { mappedSuggestions: [] };
+        }
+
+        const results = searchIndex.search(query ?? MiniSearch.wildcard, {
+            fields: ["tags"],
+            prefix: true,
+        });
+
+        return {
+            mappedSuggestions: [
+                ...new Set(results.flatMap((item) => item.tags.split("\n"))),
+            ]
+                .filter((tag) =>
+                    tag.toLowerCase().startsWith(query.toLowerCase())
+                )
+                .slice(0, 10),
+        };
+    };
+
+    const [flagFiltersOpen, setFlagFiltersOpen] = useState(false);
+    const flagFiltersNode = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // close flag filters when interacting with something that isn't flag filters
+        const onInteract = (e: UIEvent) => {
+            if (!flagFiltersNode.current) return;
+            if (!flagFiltersNode.current.contains(e.target)) {
+                setFlagFiltersOpen(false);
+            }
+        };
+
+        window.addEventListener("pointerdown", onInteract);
+        window.addEventListener("keydown", onInteract);
+        window.addEventListener("wheel", onInteract);
+        return () => {
+            window.removeEventListener("pointerdown", onInteract);
+            window.removeEventListener("keydown", onInteract);
+            window.removeEventListener("wheel", onInteract);
+        };
+    }, []);
+
+    const flagFiltersPreview: ReactNode[] = [];
+    for (const flag of FLAG_FILTERS) {
+        if (search.filter[flag] !== null) {
+            flagFiltersPreview.push(
+                <span className="i-flag" key={flag}>
+                    {search.filter[flag]
+                        ? <EyeIcon className="i-icon" />
+                        : <EyeSlashIcon className="i-icon" />}
+                    <span className="i-label">
+                        {FLAG_FILTER_LABELS[flag]}
+                    </span>
+                </span>,
+            );
+        }
+    }
+    if (!flagFiltersPreview.length) {
+        flagFiltersPreview.push(
+            <span className="i-no-flags" key="[]">
+                <span className="i-label">filters</span>
+                <ChevronDownIcon className="i-icon" />
+            </span>,
+        );
+    }
 
     return (
         <div className="cdl-search-box">
@@ -522,6 +812,35 @@ function SearchBox({ search, onChange, maxPage }: {
                     onBlur={() => setSearchFocused(false)}
                     onChange={(e) => setQuery(e.target.value)}
                 />
+            </div>
+            <div className="i-tags">
+                <TokenInput
+                    className="co-editable-body w-full p-0 px-3 leading-none"
+                    TokenIcon={HashtagIcon}
+                    tokens={search.filter.tags}
+                    setTokens={(tags) => onFilterChange({ tags })}
+                    placeholder="search tags"
+                    getSuggestions
+                    onTagSearch={onTagSearch}
+                />
+            </div>
+            <div className="i-flag-filters" ref={flagFiltersNode}>
+                <button
+                    className="i-button"
+                    onClick={() => setFlagFiltersOpen((open) => !open)}
+                >
+                    {flagFiltersPreview}
+                </button>
+                {flagFiltersOpen
+                    ? (
+                        <div className="i-settings">
+                            <FlagFilterSettings
+                                filter={search.filter}
+                                onChange={onFilterChange}
+                            />
+                        </div>
+                    )
+                    : null}
             </div>
             <div className="i-pagination">
                 <button
@@ -564,7 +883,7 @@ function useDebounced<T>(value: T): T {
         changeTimeout.current = setTimeout(() => {
             changeTimeout.current = null;
             setDebounced(currentValue.current);
-        }, 500);
+        }, 1000);
     }, [value]);
 
     useEffect(() => {
@@ -581,7 +900,6 @@ function FilteredPostFeed() {
     const [search, setSearch] = useState({
         page: 0,
         query: "",
-        exact: false,
         filter: POST_FILTER_NONE,
     });
 
@@ -638,7 +956,7 @@ function FilteredPostFeed() {
                 {errors.length
                     ? (
                         <div className="post-list-errors cohost-shadow-light rounded-lg bg-foreground p-4">
-                            <h3 class="text-xl font-bold">
+                            <h3 className="text-xl font-bold">
                                 Error loading posts
                             </h3>
                             <ul>

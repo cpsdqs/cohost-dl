@@ -48,6 +48,16 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
                     replace: "const currentUrl = '';",
                 },
             ],
+            "preact/components/token-input.tsx": [
+                {
+                    find: "...props",
+                    replace: "onTagSearch = useTagSearch, ...props",
+                },
+                {
+                    find: "= useTagSearch(",
+                    replace: "= onTagSearch(",
+                },
+            ],
             "preact/providers/user-info-provider.tsx": [
                 {
                     find: "const UserInfoContext",

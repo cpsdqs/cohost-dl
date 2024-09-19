@@ -295,7 +295,7 @@ export async function generateProjectIndex(
     const search = new MiniSearch<IPostSearchData>({
         idField: "id",
         fields: ["author", "contents", "tags"],
-        storeFields: ["author", "published", "flags", "chunk"],
+        storeFields: ["author", "published", "tags", "flags", "chunk"],
         processTerm: (term: string, fieldName?: string) => {
             if (fieldName === "contents") {
                 // cut these off. we don't need to index endless base64 strings

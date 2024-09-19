@@ -23,6 +23,6 @@ export interface IPostSearchData {
     chunk: string;
 }
 
-export type IPostIndexedData = Pick<IPostSearchData, 'author' | 'published' | 'flags' | 'chunk'>;
+export type IPostIndexedData = Pick<IPostSearchData, 'author' | 'tags' | 'published' | 'flags' | 'chunk'>;
 
 export const PAGE_STRIDE = 20;
