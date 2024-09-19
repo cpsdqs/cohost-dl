@@ -14,6 +14,14 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
         name: "post-page",
         entryPoint: "post-page.tsx",
         base: "../..",
+        additionalPatches: {
+            "shared/sitemap.ts": [
+                {
+                    find: `if (path.startsWith("/srv/release/server/"))`,
+                    replace: "return `../../static/${path}`; if (false)",
+                }
+            ],
+        }
     };
 
     const PROJECT_INDEX: FrontendScript = {
@@ -63,6 +71,12 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
                     find: "const UserInfoContext",
                     replace: "export const UserInfoContext",
                 },
+            ],
+            "shared/sitemap.ts": [
+                {
+                    find: `if (path.startsWith("/srv/release/server/"))`,
+                    replace: "return `../static/${path}`; if (false)",
+                }
             ],
         },
     };
