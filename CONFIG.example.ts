@@ -31,8 +31,6 @@ export const DATA_PORTABILITY_ARCHIVE_PATH = '';
 // Set this to false to disable Javascript, which is responsible for interaction on the generated pages
 // (read more/read less, opening/closing CWs, image attachments, etc.).
 // It's a little janky, so maybe you want an HTML-only export.
-//
-// NOTE: not tested on Windows
 export const ENABLE_JAVASCRIPT = true;
 
 // Alters pages to look like they're being viewed by a more generic observer instead of how your account sees things.

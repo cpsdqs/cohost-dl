@@ -12,15 +12,13 @@ export const PROJECT_INDEX_SCRIPT_PATH = `${DIST_PATH}/project-index.js`;
 export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
     const POST_PAGE: FrontendScript = {
         name: "post-page",
-        entryPointCode: `import "@/client.tsx"`,
+        entryPoint: "post-page.tsx",
         base: "../..",
     };
 
     const PROJECT_INDEX: FrontendScript = {
         name: "project-index",
-        entryPointCode: await Deno.readTextFile(
-            `${import.meta.dirname}/project-index.tsx`,
-        ),
+        entryPoint: "project-index.tsx",
         base: "..",
         additionalPatches: {
             "preact/components/partials/post-tags.tsx": [
@@ -28,7 +26,7 @@ export async function generateAllScripts(ctx: CohostContext, srcDir: string) {
                     find: "const isProfilePage = useMatch",
                     replace: `return {
                             pageType: "profile",
-                            handle: window.cohostDlProject.projectHandle,
+                            handle: window.cohostDL.project.handle,
                             tagSlug: undefined,
                         };
                         const isProfilePage = useMatch`,

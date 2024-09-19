@@ -834,8 +834,7 @@ const REFETCH_NONE =
 const IMPL_REWRITE_CDN_URLS = `
 import { generate as cssGenerate, parse as cssParse, walk as cssWalk } from "@internal/css-tree";
 function rewriteCdnUrls() {
-    const rewriteDataNode = document.getElementById('__cohost_dl_rewrite_data');
-    const rewriteData = rewriteDataNode ? JSON.parse(rewriteDataNode.innerHTML) : null;
+    const rewriteData = window.cohostDL.rewriteData;
 
     function rewriteUrl(url) {
         if (rewriteData?.urls?.[url]) return rewriteData.urls[url];
@@ -1021,9 +1020,9 @@ const PATCHES = (base: string): Record<string, Patch[]> => ({
 
 export interface FrontendScript {
     name: string;
-    entryPointCode: string;
+    entryPoint: string;
     base: string;
-    additionalPatches?: Patch[];
+    additionalPatches?: Record<string, Patch[]>;
 }
 
 export async  function clearDist(ctx: CohostContext) {
@@ -1050,6 +1049,14 @@ export async function generateFrontend(
         throw new Error("could not load css-tree");
     }
     const cssTreeSource = await ctx.readText(cssTreeSourcePath);
+
+    const minisearchSourcePath = await ctx.loadResourceToFile(
+        "https://esm.sh/v135/minisearch@7.1.0/es2022/minisearch.mjs",
+    );
+    if (!minisearchSourcePath) {
+        throw new Error("could not load minisearch");
+    }
+    const minisearchSource = await ctx.readText(minisearchSourcePath);
 
     const extraFiles = Object.fromEntries(
         Object.entries(EXTRA_FILES).map((
@@ -1104,7 +1111,7 @@ export async function generateFrontend(
     if (script.additionalPatches) Object.assign(patches, script.additionalPatches);
 
     const bundle = await rollup({
-        input: `@internal/${entryName}`,
+        input: path.join(import.meta.dirname, `scripts/${entryName}.tsx`),
         plugins: [
             {
                 name: "cohost-dl-resolve",
@@ -1115,12 +1122,12 @@ export async function generateFrontend(
 
                     if (id === "@internal/nothing") return "";
 
-                    if (id === `@internal/${entryName}`) {
-                        return script.entryPointCode;
-                    }
-
                     if (id === "@internal/css-tree") {
                         return cssTreeSource;
+                    }
+
+                    if (id === "@internal/minisearch") {
+                        return minisearchSource;
                     }
 
                     if (id.startsWith("@internal/missing ")) {

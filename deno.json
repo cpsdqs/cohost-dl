@@ -8,6 +8,7 @@
     "@rollup/plugin-sucrase": "npm:@rollup/plugin-sucrase@^5.0.2",
     "@std/path": "jsr:@std/path@^1.0.4",
     "entities": "npm:entities@^2.2.0",
+    "minisearch": "npm:minisearch@^7.1.0",
     "remark-gfm": "npm:remark-gfm@^4.0.0",
     "remark-parse": "npm:remark-parse@^11.0.0",
     "remark-stringify": "npm:remark-stringify@^11.0.0",

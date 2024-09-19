@@ -1,13 +1,21 @@
-import React, { useMemo, useState } from "react";
+import React, {
+    MouseEvent,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
 import ReactDOM from "react-dom/client";
 import {
     Hydrate,
     QueryClient,
     QueryClientProvider,
 } from "@tanstack/react-query";
-import sitemap from "@/shared/sitemap";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import { useSSR } from "react-i18next";
 import { httpBatchLink } from "@trpc/client/links/httpBatchLink";
+import sitemap from "@/shared/sitemap";
 import { trpc } from "@/lib/trpc";
 import { ProfileView } from "@/preact/components/partials/profile-view";
 import { PostPreview } from "@/preact/components/posts/post-preview";
@@ -15,11 +23,107 @@ import { useDisplayPrefs } from "@/preact/hooks/use-display-prefs";
 import { UserInfoContext } from "@/preact/providers/user-info-provider";
 import { LightboxHost } from "@/preact/components/lightbox";
 import { CohostLogo } from "@/preact/components/elements/icon";
+import { PaginationEggs } from "@/preact/components/partials/pagination-eggs";
+import { Loading } from "@/preact/components/loading";
+import MiniSearch from "@internal/minisearch";
+import { IPostIndexedData, PAGE_STRIDE, PostSearchFlags } from "./shared.ts";
+import type { IPost, IProject } from "../model.ts";
 
-const { project, posts, trpcState } = JSON.parse(
-    document.querySelector("#project-index-data").innerHTML,
-);
-window.cohostDlProject = project;
+const { project, rewriteData, searchTreeIndex, trpcState } = JSON
+    .parse(
+        document.querySelector("#project-index-data").innerHTML,
+    ) as {
+        project: IProject;
+        rewriteData: { base: string; urls: Record<string, string> };
+        searchTreeIndex: Record<string, number[]>;
+        trpcState: object;
+    };
+
+const allPostIds = [
+    ...new Set(Object.values(searchTreeIndex).flatMap((id) => id)),
+].sort((a, b) => b - a);
+
+const postListChunkPromises = new Map<string, {
+    promise: Promise<IPost[]>;
+    resolve: (posts: IPost[]) => void;
+}>();
+
+let postSearchIndexPromise: null | {
+    promise: Promise<MiniSearch>;
+    resolve: (search: MiniSearch) => void;
+    reject: (error: Error) => void;
+} = null;
+
+window.cohostDL = {
+    project,
+    rewriteData,
+    postSearchIndex(data: string) {
+        MiniSearch.loadJSONAsync(data, {
+            idField: "id",
+            fields: ["author", "contents", "tags"],
+            storeFields: ["author", "published", "flags", "chunk"],
+        }).then((result: MiniSearch<IPostIndexedData>) => {
+            postSearchIndexPromise?.resolve(result);
+        }).catch((error: Error) => {
+            postSearchIndexPromise?.reject(error);
+        });
+    },
+    postListChunk(
+        id: string,
+        items: IPost[],
+        newRwData: Record<string, string>,
+    ) {
+        Object.assign(rewriteData, newRwData);
+        postListChunkPromises.get(id)!.resolve(items);
+    },
+};
+
+function loadPostSearchIndex(): Promise<MiniSearch<IPostIndexedData>> {
+    if (postSearchIndexPromise) return postSearchIndexPromise.promise;
+
+    postSearchIndexPromise = {
+        promise: null as unknown as Promise<unknown>,
+        resolve: () => null,
+        reject: () => null,
+    };
+    const promise = new Promise<MiniSearch<IPostIndexedData>>(
+        (resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "cdl-index.js";
+            script.addEventListener(
+                "error",
+                () => reject(new Error(`failed to load search index`)),
+            );
+            document.head.append(script);
+            postSearchIndexPromise!.resolve = resolve;
+            postSearchIndexPromise!.reject = reject;
+        },
+    );
+    postSearchIndexPromise.promise = promise;
+    return promise;
+}
+
+function loadPostListChunk(id: string): Promise<IPost[]> {
+    const existingEntry = postListChunkPromises.get(id);
+    if (existingEntry) return existingEntry.promise;
+
+    const entry = {
+        promise: null as unknown as Promise<IPost[]>,
+        resolve: (() => null) as ((items: IPost[]) => void),
+    };
+    const promise = new Promise<IPost[]>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `cdl-chunk~${id}.js`;
+        script.addEventListener(
+            "error",
+            () => reject(new Error(`failed to load chunk ${id}`)),
+        );
+        document.head.append(script);
+        entry.resolve = resolve;
+    });
+    postListChunkPromises.set(id, entry);
+    return promise;
+}
 
 const ALL_VISIBLE = {
     canRead: "allowed",
@@ -40,15 +144,524 @@ const GENERIC_OBSERVER = {
     deleteAfter: null,
 };
 
-function ProjectIndex() {
-    const displayPrefs = useDisplayPrefs();
+interface IPostFilter {
+    asks: null | boolean;
+    adult: null | boolean;
+    reply: null | boolean;
+    share: null | boolean;
+    pinned: null | boolean;
+    editor: null | boolean;
+    liked: null | boolean;
+}
 
-    const filteredPosts = useMemo(() => {
-        return posts.sort((a, b) =>
-            new Date(b.publishedAt) - new Date(a.publishedAt)
-        );
+function postIndexedDataFilter(item: IPostIndexedData, filter: IPostFilter) {
+    const flagFilter = (filter: null | boolean, flag: PostSearchFlags) => {
+        if (filter !== null) {
+            const hasFlag = (item.flags & flag) !== 0;
+            return hasFlag !== filter;
+        }
+        return false;
+    };
+
+    if (flagFilter(filter.asks, PostSearchFlags.AskResponse)) return false;
+    if (flagFilter(filter.adult, PostSearchFlags.AdultContent)) return false;
+    if (flagFilter(filter.reply, PostSearchFlags.Reply)) return false;
+    if (flagFilter(filter.share, PostSearchFlags.Share)) return false;
+    if (flagFilter(filter.pinned, PostSearchFlags.Pinned)) return false;
+    if (flagFilter(filter.editor, PostSearchFlags.Editor)) return false;
+    if (flagFilter(filter.liked, PostSearchFlags.Liked)) return false;
+
+    return true;
+}
+
+const POST_FILTER_NONE: IPostFilter = {
+    asks: null,
+    adult: null,
+    reply: null,
+    share: null,
+    pinned: null,
+    editor: null,
+    liked: null,
+};
+
+function deepEq(a: unknown, b: unknown) {
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (!deepEq(a[i], b[i])) return false;
+        }
+        return true;
+    } else if (a && typeof a === "object" && b && typeof b === "object") {
+        const keys = Object.keys(a).sort();
+        const keysB = Object.keys(b).sort();
+        if (!deepEq(keys, keysB)) return false;
+        for (const k of keys) {
+            if (
+                !deepEq(
+                    (a as Record<string, unknown>)[k],
+                    (b as Record<string, unknown>)[k],
+                )
+            ) return false;
+        }
+        return true;
+    }
+    return a === b;
+}
+
+interface IPostSearch {
+    page: number;
+    query: string;
+    exact: boolean;
+    filter: IPostFilter;
+}
+
+function useSearchIndex(use: boolean): {
+    isLoading: boolean;
+    error: Error | null;
+    searchIndex: MiniSearch<IPostIndexedData> | null;
+} {
+    const [usedOnce, setUsedOnce] = useState(use);
+
+    useEffect(() => {
+        if (use) setUsedOnce(true);
+    }, [use]);
+
+    const [isLoading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+    const [searchIndex, setSearchIndex] = useState<
+        MiniSearch<IPostIndexedData> | null
+    >(null);
+
+    useEffect(() => {
+        if (usedOnce) {
+            setLoading(true);
+            loadPostSearchIndex().then(setSearchIndex).catch(setError).finally(
+                () => setLoading(false),
+            );
+        }
+    }, [usedOnce]);
+
+    return { isLoading, error, searchIndex };
+}
+
+function usePostListChunks(requestedChunks: string[]): {
+    loading: Set<string>;
+    errors: Map<string, Error>;
+    chunks: Map<string, IPost[]>;
+    index: Map<number, [string, number]>;
+} {
+    const [loading, setLoading] = useState(new Set<string>());
+    const [errors, setErrors] = useState(new Map<string, Error>());
+    const [chunks, setChunks] = useState(new Map<string, IPost[]>());
+    const [index, setIndex] = useState(new Map<number, [string, number]>());
+
+    const chunkRequests = useRef(new Set<string>());
+
+    useEffect(() => {
+        for (const chunk of requestedChunks) {
+            if (chunkRequests.current.has(chunk)) continue;
+            chunkRequests.current.add(chunk);
+
+            setLoading((loading) => {
+                const newLoading = new Set(loading);
+                newLoading.add(chunk);
+                return newLoading;
+            });
+
+            loadPostListChunk(chunk).then((posts) => {
+                setChunks((chunks) => {
+                    const newChunks = new Map(chunks);
+                    newChunks.set(chunk, posts);
+                    return newChunks;
+                });
+                setIndex((index) => {
+                    const newIndex = new Map(index);
+                    for (let i = 0; i < posts.length; i++) {
+                        newIndex.set(posts[i].postId, [chunk, i]);
+                    }
+                    return newIndex;
+                });
+            }).catch((error) => {
+                setErrors((errors) => {
+                    const newErrors = new Map(errors);
+                    newErrors.set(chunk, error);
+                    return newErrors;
+                });
+            }).finally(() => {
+                setLoading((loading) => {
+                    const newLoading = new Set(loading);
+                    newLoading.delete(chunk);
+                    return newLoading;
+                });
+            });
+        }
+    }, [requestedChunks]);
+
+    return {
+        loading,
+        errors,
+        chunks,
+        index,
+    };
+}
+
+function useFilteredPosts(search: IPostSearch) {
+    const useSearch = !!search.query ||
+        !deepEq(search.filter, POST_FILTER_NONE);
+
+    const {
+        isLoading: searchIndexLoading,
+        error: searchIndexError,
+        searchIndex,
+    } = useSearchIndex(useSearch);
+
+    let isLoading = false;
+    const errors: Error[] = [];
+
+    let posts: number[] = [];
+    let maxPage = 0;
+
+    let requestedChunks: string[] = [];
+
+    const start = search.page * PAGE_STRIDE;
+    const end = (search.page + 1) * PAGE_STRIDE;
+
+    if (useSearch) {
+        if (searchIndex) {
+            const results = searchIndex.search(
+                search.query || MiniSearch.wildcard,
+                {
+                    fuzzy: search.exact ? 0 : 0.2,
+                    prefix: !search.exact,
+                    filter: (item: IPostIndexedData) =>
+                        postIndexedDataFilter(item, search.filter),
+                },
+            );
+
+            const searchResults = results.slice(start, end);
+
+            posts = searchResults.map((result) => result.id);
+            requestedChunks = searchResults.map((result) => result.chunk);
+            maxPage = Math.max(
+                0,
+                Math.floor((results.length - 1) / PAGE_STRIDE),
+            );
+        } else {
+            isLoading = isLoading || searchIndexLoading;
+            if (searchIndexError) errors.push(searchIndexError);
+        }
+    } else {
+        posts = allPostIds.slice(start, end);
+        // FIXME: really unreliable
+        requestedChunks = [`${project.handle}~${search.page}`];
+        maxPage = Math.floor((allPostIds.length - 1) / PAGE_STRIDE);
+    }
+
+    const {
+        loading: loadingChunks,
+        errors: chunkErrors,
+        chunks,
+        index,
+    } = usePostListChunks(requestedChunks);
+
+    for (const chunk of requestedChunks) {
+        if (loadingChunks.has(chunk)) isLoading = true;
+        const error = chunkErrors.get(chunk);
+        if (error) errors.push(error);
+    }
+
+    const postData = posts.map((post) => {
+        const loc = index.get(post);
+        if (loc) {
+            return chunks.get(loc[0])?.[loc[1]];
+        }
+    }).filter((x) => x) as IPost[];
+
+    return {
+        isLoading,
+        errors,
+        maxPage,
+        posts: postData,
+    };
+}
+
+// for syntax highlighting
+const css = (x: TemplateStringsArray) => x.join("");
+
+const cdlStyles = css`
+    :root {
+        --cdl-bg: 255 249 242;
+        --cdl-fg: 0 0 0;
+        --cdl-shadow: 0px 4px 5px rgba(0, 0, 0, .14), 0px 1px 10px rgba(0, 0, 0, .12), 0px 2px 4px rgba(0, 0, 0, .2);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --cdl-bg: 25 25 25;
+            --cdl-outline: 127 127 127;
+            --cdl-fg: 240 240 240;
+            --cdl-shadow: 0 0 0 1px #fff3, 0px 4px 5px rgba(0, 0, 0, .14), 0px 1px 10px rgba(0, 0, 0, .12), 0px 2px 4px rgba(0, 0, 0, .2);
+        }
+    }
+
+    .cdl-search-box {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        background: rgb(var(--cdl-bg));
+        color: rgb(var(--cdl-fg));
+        box-shadow: var(--cdl-shadow);
+        border-radius: 0.5rem;
+        display: grid;
+
+        > .i-search {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            border-radius: 0.5rem;
+            padding-left: 0.5rem;
+
+            > .i-search-icon {
+                width: 1.1rem;
+            }
+
+            > .i-search-field {
+                margin: 0;
+                background: none;
+                appearance: none;
+                font: inherit;
+                color: inherit;
+                border: none;
+                padding: 0.25rem 0.5rem;
+
+                &:focus {
+                    outline: none;
+                    box-shadow: none;
+                }
+            }
+
+            &:focus-within {
+                box-shadow: 0 0 0 0.25rem rgb(var(--color-cherry));
+            }
+        }
+
+        > .i-pagination {
+            display: grid;
+            place-self: end;
+            grid-template-columns: auto auto auto;
+
+            > .i-page-button {
+                width: 1.5rem;
+                height: 1.5rem;
+                display: grid;
+                place-content: center;
+                transition: opacity 0.2s;
+
+                &:disabled {
+                    opacity: 0.5;
+                }
+
+                &:active {
+                    opacity: 0.5;
+                    transition: none;
+                }
+
+                > .i-icon {
+                    width: 1.1rem;
+                }
+            }
+
+            > .i-page {
+                min-width: 3em;
+                font-variant-numeric: tabular-nums;
+                text-align: center;
+            }
+        }
+    }
+
+    .cdl-loading-container {
+        display: grid;
+        place-content: center;
+        padding: 1rem;
+        color: rgb(var(--cdl-fg));
+    }
+`;
+
+{
+    const style = document.createElement("style");
+    style.innerHTML = cdlStyles;
+    document.head.append(style);
+}
+
+function SearchBox({ search, onChange, maxPage }: {
+    search: IPostSearch;
+    onChange: (search: Partial<IPostSearch>) => void;
+    maxPage: number;
+}) {
+    const [query, setQuery] = useState(search.query);
+    const [isSearchFocused, setSearchFocused] = useState(false);
+
+    const debouncedQuery = useDebounced(query);
+    useEffect(() => {
+        if (!isSearchFocused) {
+            onChange({ query });
+        } else {
+            onChange({ query: debouncedQuery });
+        }
+    }, [isSearchFocused, debouncedQuery]);
+
+    return (
+        <div className="cdl-search-box">
+            <div className="i-search">
+                <MagnifyingGlassIcon className="i-search-icon" />
+                <input
+                    className="i-search-field"
+                    placeholder="Search"
+                    type="search"
+                    value={query}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    onChange={(e) => setQuery(e.target.value)}
+                />
+            </div>
+            <div className="i-pagination">
+                <button
+                    className="i-page-button"
+                    type="button"
+                    aria-label="Previous page"
+                    disabled={!search.page}
+                    onClick={() => {
+                        onChange({ page: search.page - 1 });
+                    }}
+                >
+                    <ChevronLeftIcon className="i-icon" />
+                </button>
+                <div className="i-page">{search.page + 1}/{maxPage + 1}</div>
+                <button
+                    className="i-page-button"
+                    type="button"
+                    aria-label="Next page"
+                    disabled={search.page >= maxPage}
+                    onClick={() => {
+                        onChange({ page: search.page + 1 });
+                    }}
+                >
+                    <ChevronRightIcon className="i-icon" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function useDebounced<T>(value: T): T {
+    const [debounced, setDebounced] = useState(value);
+
+    const currentValue = useRef(value);
+    currentValue.current = value;
+
+    const changeTimeout = useRef<null | number>(null);
+    useEffect(() => {
+        if (changeTimeout.current) return;
+        changeTimeout.current = setTimeout(() => {
+            changeTimeout.current = null;
+            setDebounced(currentValue.current);
+        }, 500);
+    }, [value]);
+
+    useEffect(() => {
+        return () => {
+            if (changeTimeout.current) clearTimeout(changeTimeout.current);
+        };
     }, []);
 
+    return debounced;
+}
+
+function FilteredPostFeed() {
+    const displayPrefs = useDisplayPrefs();
+    const [search, setSearch] = useState({
+        page: 0,
+        query: "",
+        exact: false,
+        filter: POST_FILTER_NONE,
+    });
+
+    const { isLoading, errors, posts, maxPage } = useFilteredPosts(search);
+    const hasNextPage = search.page < maxPage;
+
+    const onPageBack = useCallback((e: MouseEvent) => {
+        e.preventDefault();
+        setSearch((search) => ({
+            ...search,
+            page: Math.max(0, search.page - 1),
+        }));
+    }, []);
+
+    const onPageForward = useCallback((e: MouseEvent) => {
+        e.preventDefault();
+        setSearch((search) => ({ ...search, page: search.page + 1 }));
+    }, []);
+
+    useEffect(() => {
+        if (search.page > maxPage) {
+            setSearch((search) => ({ ...search, page: maxPage }));
+        }
+    }, [search.page, maxPage]);
+
+    return (
+        <div>
+            <SearchBox
+                search={search}
+                onChange={(changes) =>
+                    setSearch((search) => ({ ...search, ...changes }))}
+                maxPage={maxPage}
+            />
+            <div className="post-list">
+                {posts.map((post) => (
+                    <div className="post-item my-4" key={post.postId}>
+                        <PostPreview
+                            condensed
+                            viewModel={post}
+                            displayPrefs={displayPrefs}
+                            highlightedTags={NO_TAGS}
+                        />
+                    </div>
+                ))}
+
+                {isLoading
+                    ? (
+                        <div className="cdl-loading-container">
+                            <Loading />
+                        </div>
+                    )
+                    : null}
+
+                {errors.length
+                    ? (
+                        <div className="post-list-errors cohost-shadow-light rounded-lg bg-foreground p-4">
+                            <h3 class="text-xl font-bold">
+                                Error loading posts
+                            </h3>
+                            <ul>
+                                {errors.map((error, i) => (
+                                    <li key={i}>{error?.toString?.()}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )
+                    : null}
+            </div>
+            <PaginationEggs
+                condensed
+                backLink={search.page > 0 ? "#" : null}
+                forwardLink={hasNextPage ? "#" : null}
+                backOnClick={onPageBack}
+                forwardOnClick={onPageForward}
+            />
+        </div>
+    );
+}
+
+function ProjectIndex() {
     // UserInfoContext.Provider is in here because it will inexplicably not render anything if it's a parent of ProfileView
     return (
         <div className="flex flex-col">
@@ -69,16 +682,7 @@ function ProjectIndex() {
                             canAccessPermissions={ALL_VISIBLE}
                         >
                             <UserInfoContext.Provider value={GENERIC_OBSERVER}>
-                                {filteredPosts.map((post) => (
-                                    <div className="my-4" key={post.postId}>
-                                        <PostPreview
-                                            condensed
-                                            viewModel={post}
-                                            displayPrefs={displayPrefs}
-                                            highlightedTags={NO_TAGS}
-                                        />
-                                    </div>
-                                ))}
+                                <FilteredPostFeed />
                             </UserInfoContext.Provider>
                         </ProfileView>
                     </div>
