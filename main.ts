@@ -108,7 +108,11 @@ const errors: { url: string; error: Error }[] = [];
     // it can happen that we've cached data for a post that is now a 404.
     // I suppose we can try loading resources for those as well?
     for (const post of allPosts) {
-        await rewritePost(ctx, post, FROM_POST_PAGE_TO_ROOT);
+        try {
+            await rewritePost(ctx, post, FROM_POST_PAGE_TO_ROOT);
+        } catch {
+            // oh well!!
+        }
     }
 
     const dpaPostURLs: string[] = [];
