@@ -12,6 +12,7 @@ export const POSTS = [
 // some CSS posts contain external images that load forever
 export const DO_NOT_FETCH_HOSTNAMES = [
     'eggbugpocket.queertra.sh', // GIF plays Pokémon
+    'r0t.is', // Cohost runs Windows XP
 ];
 
 // some posts may have disappeared between loading the list of posts and actually loading the posts,
