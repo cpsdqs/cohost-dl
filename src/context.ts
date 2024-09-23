@@ -104,7 +104,7 @@ const CACHED_CONTENT_TYPES_FILE_PATH = "~headers.json";
 
 export function encodeFilePathURI(path: string): string {
     // encodeURI preserves ?search, which we don’t want
-    return path.split('/').map(encodeURIComponent).join('/');
+    return path.split("/").map(encodeURIComponent).join("/");
 }
 
 export class CohostContext {
@@ -262,7 +262,10 @@ export class CohostContext {
         return this.getCachedFileForPost(projectHandle, id);
     }
 
-    async getCachedFileForPost(projectHandle: string, id: string | number): Promise<string | null> {
+    async getCachedFileForPost(
+        projectHandle: string,
+        id: string | number,
+    ): Promise<string | null> {
         const projectDir = path.join(this.getCleanPath(projectHandle), "post");
         try {
             for await (const item of Deno.readDir(projectDir)) {
@@ -287,6 +290,90 @@ export class CohostContext {
 
     async readJson(filePath: string): Promise<object> {
         return JSON.parse(await this.readText(filePath));
+    }
+
+    /**
+     * Reads a large JSON file with one item per line.
+     *
+     * Alternatively reads an array. This means T must not be an array.
+     */
+    async readLargeJson<T>(filePath: string): Promise<T[]> {
+        const fullPath = this.getCleanPath(filePath);
+
+        const items: T[] = [];
+        using file = await Deno.open(fullPath, { read: true });
+
+        let buf = new Uint8Array(4096);
+        let currentLine: Uint8Array[] = [];
+
+        const flushCurrentLine = () => {
+            const totalSize = currentLine.map((buf) => buf.byteLength).reduce(
+                (a, b) => a + b,
+                0,
+            );
+            if (!totalSize) return;
+
+            const lineBuffer = new Uint8Array(totalSize);
+            let index = 0;
+            for (const buf of currentLine) {
+                lineBuffer.set(buf, index);
+                index += buf.byteLength;
+            }
+
+            currentLine = [];
+
+            const currentLineText = new TextDecoder().decode(lineBuffer).trim();
+            const parsed = JSON.parse(currentLineText);
+            if (Array.isArray(parsed)) {
+                items.push(...parsed);
+            } else {
+                items.push(parsed);
+            }
+        };
+
+        while (true) {
+            const bytesRead = await file.read(buf);
+            if (bytesRead === null) break;
+
+            let rest = buf.slice(0, bytesRead);
+            while (true) {
+                const lineBreakIndex = rest.indexOf(0x0A);
+                if (lineBreakIndex > -1) {
+                    const untilLineBreak = rest.slice(0, lineBreakIndex + 1);
+                    currentLine.push(untilLineBreak);
+                    flushCurrentLine();
+
+                    rest = rest.slice(lineBreakIndex + 1);
+                } else {
+                    break;
+                }
+            }
+
+            if (rest.byteLength) {
+                currentLine.push(rest);
+            }
+            buf = new Uint8Array(4096);
+        }
+
+        flushCurrentLine();
+
+        return items;
+    }
+
+    /** Complement to readLargeJson */
+    async writeLargeJson<T>(filePath: string, items: T[]): Promise<void> {
+        const fullPath = this.getCleanPath(filePath);
+
+        await Deno.mkdir(path.dirname(fullPath), { recursive: true });
+        using file = await Deno.open(fullPath, { write: true, create: true });
+
+        for (const item of items) {
+            if (Array.isArray(item)) throw new Error("item cannot be an array");
+
+            const line = JSON.stringify(item) + "\n";
+            const buf = new TextEncoder().encode(line);
+            await file.write(buf);
+        }
     }
 
     async write(filePath: string, data: string | Uint8Array) {

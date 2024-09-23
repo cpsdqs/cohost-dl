@@ -24,10 +24,11 @@ const ctx = new CohostContext(COOKIE, "out");
 await ctx.init();
 
 let isLoggedIn = false;
+let currentProjectHandle = null;
 {
     // check that login actually worked
     const loginStateResponse = await ctx.get(
-        "https://cohost.org/api/v1/trpc/login.loggedIn?batch=1&input=%7B%7D",
+        "https://cohost.org/api/v1/trpc/login.loggedIn,projects.listEditedProjects?batch=1&input=%7B%7D",
     );
     const loginState = await loginStateResponse.json();
     if (!loginState[0].result.data.loggedIn) {
@@ -35,17 +36,60 @@ let isLoggedIn = false;
             "\x1b[33mwarning:\nNot logged in. Please update your cookie configuration if cohost.org still exists\x1b[m\n\n",
         );
     } else {
-        console.log(`logged in as ${loginState[0].result.data.email}`);
+        const currentProjectId = loginState[0].result.data.projectId;
+        const currentProject = loginState[1].result.data.projects.find((proj: { projectId: number }) =>
+            proj.projectId === currentProjectId
+        );
+        if (!currentProject) {
+            throw new Error(
+                `invalid state: logged in as project ${currentProjectId}, but this is not an edited project`,
+            );
+        }
+        currentProjectHandle = currentProject.handle;
+
+        console.log(
+            `logged in as ${
+                loginState[0].result.data.email
+            } / @${currentProjectHandle}`,
+        );
         isLoggedIn = true;
     }
 }
 
 // JSON data
 if (isLoggedIn) {
+    // legacy liked posts
+    if (await ctx.hasFile('liked.json')) {
+        console.log('');
+        console.log(`There’s a list of liked posts here using an older format. It’s unclear what page you were logged in as when loading them.`);
+        let likedPostsHandle: string | null = null;
+        if (confirm(`Did you load these liked posts as @${currentProjectHandle}?`)) {
+            likedPostsHandle = currentProjectHandle;
+        } else {
+            while (true) {
+                likedPostsHandle = prompt("What’s the handle of the page these liked posts are for?")?.trim() ?? null;
+                if (likedPostsHandle) {
+                    if (confirm(`It was @${likedPostsHandle}?`)) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        if (!likedPostsHandle) {
+            console.log('no input. exiting');
+            Deno.exit(1);
+        }
+        await Deno.mkdir(ctx.getCleanPath(likedPostsHandle), { recursive: true });
+        await Deno.rename(ctx.getCleanPath('liked.json'), ctx.getCleanPath(`${likedPostsHandle}/liked.json`));
+    }
+
     // load all liked posts for the current page
-    if (!(await ctx.hasFile("liked.json"))) {
+    if (!(await ctx.hasFile(`${currentProjectHandle}/liked.json`))) {
+        console.log(`loading likes for @${currentProjectHandle}`);
         const liked = await loadAllLikedPosts(ctx);
-        await ctx.write("liked.json", JSON.stringify(liked));
+        await ctx.writeLargeJson(`${currentProjectHandle}/liked.json`, liked);
     }
 
     // load all project posts
@@ -56,7 +100,9 @@ if (isLoggedIn) {
         }
     }
 } else {
-    console.log("\x1b[33mnot logged in: skipping liked posts and project posts \x1b[m");
+    console.log(
+        "\x1b[33mnot logged in: skipping liked posts and project posts \x1b[m",
+    );
 }
 
 // javascript
@@ -69,15 +115,22 @@ const errors: { url: string; error: Error }[] = [];
 
 // Single post pages
 {
-    const likedPosts: IPost[] = [];
-    if (await ctx.hasFile("liked.json")) {
-        likedPosts.push(...await ctx.readJson("liked.json"));
-    }
+    const likedPosts = await Promise.all(
+        PROJECTS.map(async (handle) => {
+            const file = `${handle}/liked.json`;
+            if (await ctx.hasFile(file)) {
+                return ctx.readLargeJson(`${handle}/liked.json`);
+            } else {
+                return [];
+            }
+        }),
+    ) as IPost[][];
+
     const projectPosts = await Promise.all(
         PROJECTS.map(async (handle) => {
             const file = `${handle}/posts.json`;
             if (await ctx.hasFile(file)) {
-                return ctx.readJson(`${handle}/posts.json`)
+                return ctx.readJson(`${handle}/posts.json`);
             } else {
                 return [];
             }
@@ -85,7 +138,7 @@ const errors: { url: string; error: Error }[] = [];
     ) as IPost[][];
 
     const allPosts = [
-        ...likedPosts,
+        ...likedPosts.flatMap(x => x),
         ...projectPosts.flatMap((x) => x),
     ];
 
@@ -151,7 +204,9 @@ await ctx.finalize();
 
 if (errors.length) {
     console.log(
-        `\x1b[32mDone, \x1b[33mwith ${errors.length} error${errors.length === 1 ? "" : "s"}\x1b[m`,
+        `\x1b[32mDone, \x1b[33mwith ${errors.length} error${
+            errors.length === 1 ? "" : "s"
+        }\x1b[m`,
     );
     for (const { url, error } of errors) console.log(`${url}: ${error}`);
 } else {

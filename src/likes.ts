@@ -21,7 +21,7 @@ export async function loadAllLikedPosts(ctx: CohostContext): Promise<IPost[]> {
     let refTimestamp: number | null = null;
     let skipPosts = 0;
 
-    const posts = [];
+    const posts: IPost[] = [];
 
     let hasNext = true;
     while (hasNext) {
