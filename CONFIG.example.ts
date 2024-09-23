@@ -46,3 +46,7 @@ export const ENABLE_JAVASCRIPT = true;
 //
 // NOTE: currently breaks Javascript on all of your own post pages
 export const GENERIC_OBSERVER = false;
+
+// Number of seconds to wait between requests.
+// Increase this to slow down your download. This might be considered polite towards servers.
+export const REQUEST_DELAY_SECS = 0;

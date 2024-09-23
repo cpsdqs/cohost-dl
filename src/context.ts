@@ -5,7 +5,7 @@ import {
     parse as cssParse,
     walk as cssWalk,
 } from "npm:css-tree@2.3.1";
-import { DO_NOT_FETCH_HOSTNAMES } from "./config.ts";
+import { DO_NOT_FETCH_HOSTNAMES, REQUEST_DELAY_SECS } from "./config.ts";
 
 const USER_AGENT = "cohost-dl/1.0";
 const MAX_FILE_NAME_LENGTH_UTF8 = 250;
@@ -172,6 +172,13 @@ export class CohostContext {
     /** Performs a GET request */
     async get(url: string): Promise<Response> {
         console.log(`GET ${url}`);
+
+        if (REQUEST_DELAY_SECS) {
+            await new Promise(resolve => {
+                setTimeout(resolve, REQUEST_DELAY_SECS * 1000);
+            });
+        }
+
         const res = await fetch(url, {
             headers: {
                 "user-agent": USER_AGENT,
