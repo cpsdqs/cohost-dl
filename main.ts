@@ -144,7 +144,7 @@ const errors: { url: string; error: Error }[] = [];
 }
 
 {
-    await generateAllIndices(ctx);
+    await generateAllIndices(ctx, errors);
 }
 
 await ctx.finalize();

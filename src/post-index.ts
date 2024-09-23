@@ -643,7 +643,7 @@ a {
     );
 }
 
-export async function generateAllIndices(ctx: CohostContext) {
+export async function generateAllIndices(ctx: CohostContext, errors: { url: string; error: Error }[]) {
     const handles: string[] = [];
 
     for await (const item of Deno.readDir(ctx.getCleanPath(""))) {
@@ -659,7 +659,12 @@ export async function generateAllIndices(ctx: CohostContext) {
 
     const batches: IndexBatch[] = [];
     for (const handle of handles) {
-        batches.push(...await generateProjectIndex(ctx, handle));
+        try {
+            batches.push(...await generateProjectIndex(ctx, handle));
+        } catch (error) {
+            console.error(`\x1b[31mFailed! ${error}\x1b[m`);
+            errors.push({ url: `index for ${handle}`, error });
+        }
     }
 
     await generateAllPostsIndex(ctx, batches);
