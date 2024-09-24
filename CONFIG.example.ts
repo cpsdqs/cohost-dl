@@ -1,23 +1,32 @@
-// copy the cookie header from dev tools on cohost.org. this is used to log in, so don't share it
+// Copy the cookie header from dev tools on cohost.org. This is used to log in, so don't share it.
+//
+// The page you’re currently logged into will be the point of view for cohost-dl data.
+// You probably shouldn’t switch pages in the browser while the script is running.
+// However, you can switch to different pages before running the script multiple times if you’d like
+// to e.g. download liked posts for your sideblogs as well!
 export const COOKIE = 'connect.sid=adhjsakfahdsfjkash';
 
-// load all of your own posts
+// Load all of your own posts
+//
+// You must list your handle here for likes to be loaded.
+// (Also, make sure that the page you’re currently logged into doesn’t have any of these muted or something)
 export const PROJECTS = ['your-handle'];
 
-// load some specific additional posts
+// Load some specific additional posts
 export const POSTS = [
     'https://cohost.org/example/123456-example-post',
 ];
 
-// some CSS posts contain external images that load forever
+// Some CSS posts contain external images that load forever
 export const DO_NOT_FETCH_HOSTNAMES = [
     'eggbugpocket.queertra.sh', // GIF plays Pokémon
     'r0t.is', // Cohost runs Windows XP
 ];
 
-// some posts may have disappeared between loading the list of posts and actually loading the posts,
-// and give you a '404 not found' error. so, these post IDs can be listed here and be skipped when loading,
-// so as not to keep retrying every time you run the script
+// Some posts may have disappeared between loading the list of posts and actually loading the posts,
+// and give you a '404 not found' error.
+// These post IDs can then be listed here and be skipped when loading, so as not to keep retrying
+// every time you run the script.
 export const SKIP_POSTS = [
     9639936,
 ];

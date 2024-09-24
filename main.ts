@@ -115,8 +115,12 @@ const errors: { url: string; error: Error }[] = [];
 
 // Single post pages
 {
+    const allProjectDirsProbably: string[] = [];
+    for await (const item of Deno.readDir(ctx.getCleanPath(''))) {
+        if (item.isDirectory) allProjectDirsProbably.push(item.name);
+    }
     const likedPosts = await Promise.all(
-        PROJECTS.map(async (handle) => {
+        allProjectDirsProbably.map(async (handle) => {
             const file = `${handle}/liked.json`;
             if (await ctx.hasFile(file)) {
                 return ctx.readLargeJson(`${handle}/liked.json`);
@@ -127,7 +131,7 @@ const errors: { url: string; error: Error }[] = [];
     ) as IPost[][];
 
     const projectPosts = await Promise.all(
-        PROJECTS.map(async (handle) => {
+        allProjectDirsProbably.map(async (handle) => {
             const file = `${handle}/posts.json`;
             if (await ctx.hasFile(file)) {
                 return ctx.readJson(`${handle}/posts.json`);
