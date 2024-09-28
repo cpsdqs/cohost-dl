@@ -6,7 +6,7 @@ Downloads posts onto your computer from cohost.org, which is shutting down.
 - If you have a data portability archive: also downloads all posts you’ve commented on
 - Legal: using this software does not somehow grant you a license to re-publish posts and comments from other people
 
-Related: [cohost-dl 2](tree/main/db/)
+Related: [cohost-dl 2](db)
 
 ## Downloaded Data
 Downloaded data will be placed in an `out` directory.
