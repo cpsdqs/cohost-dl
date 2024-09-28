@@ -1,0 +1,47 @@
+# database file path
+database = "data.db"
+
+# see cohost-dl 1
+cookie = "connect.sid=adhjsakfahdsfjkash"
+
+# output directory.
+# works similarly to cohost-dl 1 and is probably 99% compatible,
+# so you can point this at the cohost-dl 1 output directory to avoid having duplicate images
+root_dir = "path/to/out"
+
+# don't load external resources from these domains
+do_not_fetch_domains = [
+    'eggbugpocket.queertra.sh', # GIF plays Pokémon
+    'r0t.is', # Cohost runs Windows XP
+]
+
+# load all posts from these projects
+load_profile_posts = [
+    'example-handle',
+]
+
+# load all posts from all followed projects
+load_dashboard = false
+
+# load all liked posts for the currently active page
+load_likes = false
+
+# when loading the dashboard: ignore these particular projects
+skip_follows = [
+    'example-handle',
+]
+
+# load comments for all posts
+load_comments = false
+
+# load images and audio attachments in posts
+load_post_resources = false
+
+# load avatars, headers, and images in projects descriptions
+load_project_resources = false
+
+# load images in comments
+load_comment_resources = false
+
+# port when running the web server
+server_port = 26467

@@ -1,0 +1,12 @@
+drop table resource_content_types;
+drop table likes;
+drop table follows;
+drop table project_resources;
+drop table post_resources;
+drop table comment_resources;
+drop table post_related_projects;
+drop table post_tags;
+drop table comments;
+drop table posts;
+drop table projects;
+drop table url_files;
