@@ -56,7 +56,7 @@ fn json_result<T: Serialize>(result: anyhow::Result<T>) -> Response<Body> {
         Response::builder()
             // TODO: better error codes
             .status(StatusCode::GONE)
-            .header("content-type", "application/json")
+            .header("content-type", "application/json; charset=utf-8")
             .body(Body::from_stream(ReaderStream::new(io::Cursor::new(
                 err_data,
             ))))
@@ -70,7 +70,7 @@ fn json_result<T: Serialize>(result: anyhow::Result<T>) -> Response<Body> {
         }) {
             Ok(data) => Response::builder()
                 .status(StatusCode::OK)
-                .header("content-type", "application/json")
+                .header("content-type", "application/json; charset=utf-8")
                 .body(Body::from_stream(ReaderStream::new(io::Cursor::new(data))))
                 .unwrap(),
             Err(err) => make_err(err.to_string()),

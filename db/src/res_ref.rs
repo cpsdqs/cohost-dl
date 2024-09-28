@@ -90,15 +90,105 @@ impl ResourceRefs for String {
                     }
                 }
                 if let Some(src_set) = attrs.get("srcset") {
-                    // TODO
-                    // this seems ok though because apparently no one ever uses this
-                    error!("not implemented: srcset");
+                    for url in urls_in_srcset(src_set) {
+                        if !url.starts_with("data:") && !url.is_empty() {
+                            if let Ok(src) = base.join(&url) {
+                                refs.insert(src);
+                            }
+                        }
+                    }
                 }
             }
         }
 
         refs
     }
+}
+
+fn urls_in_srcset(s: &str) -> Vec<String> {
+    // https://html.spec.whatwg.org/multipage/images.html#srcset-attributes
+    struct Reader<'a> {
+        chars: std::str::Chars<'a>,
+        buf: Option<char>,
+    }
+    impl<'a> Reader<'a> {
+        fn peek(&self) -> Option<char> {
+            self.buf
+        }
+        fn next(&mut self) {
+            self.buf = self.chars.next();
+        }
+    }
+    let mut reader = Reader {
+        chars: s.chars(),
+        buf: None,
+    };
+    reader.next();
+
+    let mut urls = Vec::new();
+
+    while reader.peek().is_some() {
+        // 1. whitespace*
+        while reader.peek().map_or(false, |c| c.is_ascii_whitespace()) {
+            reader.next();
+        }
+        // 2. URL, probably
+        let mut url = String::new();
+        if reader.peek() == Some(',') {
+            // invalid
+            continue;
+        }
+        while reader.peek().map_or(false, |c| !c.is_ascii_whitespace()) {
+            if let Some(c) = reader.peek() {
+                url.push(c);
+            }
+            reader.next();
+        }
+        if url.ends_with(',') {
+            url.pop();
+            urls.push(url);
+            continue;
+        }
+        if !url.is_empty() {
+            urls.push(url);
+        }
+
+        // 3. whitespace*
+        while reader.peek().map_or(false, |c| c.is_ascii_whitespace()) {
+            reader.next();
+        }
+        // 4. descriptor?
+        while reader
+            .peek()
+            .map_or(false, |c| !c.is_ascii_whitespace() && c != ',')
+        {
+            reader.next();
+        }
+        // 5. whitespace*
+        while reader.peek().map_or(false, |c| c.is_ascii_whitespace()) {
+            reader.next();
+        }
+        // this should be a comma, but if not, well, whatever
+        reader.next();
+    }
+
+    urls
+}
+
+#[test]
+fn test_urls_in_srcset() {
+    assert_eq!(
+        urls_in_srcset(" https://example.com 3x, "),
+        vec!["https://example.com".to_string()]
+    );
+    assert_eq!(
+        urls_in_srcset(" https://example.com 3x, https://a.com/?a=1 , https://b.com"),
+        vec![
+            "https://example.com".to_string(),
+            "https://a.com/?a=1".into(),
+            "https://b.com".into()
+        ]
+    );
 }
 
 impl ResourceRefs for PostBlockMarkdown {
