@@ -29,3 +29,6 @@ tokio = { version = "1.40", features = ["full"] }
 tokio-util = "0.7"
 toml = "0.8"
 urlencoding = "2.1"
+
+[target.'cfg(windows)'.dependencies]
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
