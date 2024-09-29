@@ -20,6 +20,7 @@ pub struct CohostContext {
     cookie: String,
     client: Client,
     root_dir: PathBuf,
+    temp_dir: PathBuf,
     pub do_not_fetch_domains: HashSet<String>,
     pub(crate) db: Mutex<SqliteConnection>,
 }
@@ -53,10 +54,14 @@ impl CohostContext {
             .build()
             .expect("failed to create client");
 
+        let temp_dir = root_dir.join("tmp");
+        let _ = fs::create_dir_all(&temp_dir);
+
         CohostContext {
             cookie,
             client,
             root_dir,
+            temp_dir,
             do_not_fetch_domains: Default::default(),
             db,
         }
@@ -401,8 +406,8 @@ impl CohostContext {
             props.file_path
         };
 
-        let file =
-            NamedTempFile::with_prefix("cohost-dl-res-").context("creating temporary file")?;
+        let file = NamedTempFile::with_prefix_in("cohost-dl-res-", &self.temp_dir)
+            .context("creating temporary file")?;
 
         while let Some(chunk) = res.chunk().await? {
             file.as_file().write_all(&chunk)?;
