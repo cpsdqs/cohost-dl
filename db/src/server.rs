@@ -1,22 +1,31 @@
+use crate::comment::{CommentFromCohost, CommentPermission, InnerComment};
 use crate::context::CohostContext;
+use crate::data::DbDataError;
 use crate::post::{LimitedVisibilityReason, PostAstMap, PostFromCohost, PostState};
 use crate::project::ProjectFromCohost;
+use crate::render::{PostRenderRequest, PostRenderer};
 use crate::Config;
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{Response, StatusCode};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
+use axum::{response, Router};
+use chrono::Utc;
+use diesel::result::Error as DieselError;
 use diesel::SqliteConnection;
 use serde::Serialize;
-use std::io;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tera::{Context, Tera};
+use thiserror::Error;
 use tokio::sync::Mutex;
-use tokio_util::io::ReaderStream;
 
 struct ServerState {
     ctx: CohostContext,
+    tera: Tera,
+    post_renderer: PostRenderer,
 }
 
 type SharedServerState = Arc<ServerState>;
@@ -24,9 +33,17 @@ type SharedServerState = Arc<ServerState>;
 pub async fn serve(config: Config, db: SqliteConnection) {
     let ctx = CohostContext::new("".into(), PathBuf::from(config.root_dir), Mutex::new(db));
 
+    let mut tera = Tera::new("templates/*").unwrap();
+    let post_renderer = PostRenderer::new(4);
+
     let routes = Router::new()
-        .route("/api/:viewer/post/:post", get(api_get_post))
-        .with_state(Arc::new(ServerState { ctx }));
+        .route("/:project/post/:post", get(get_single_post))
+        .route("/api/post/:post", get(api_get_post))
+        .with_state(Arc::new(ServerState {
+            ctx,
+            tera,
+            post_renderer,
+        }));
 
     let bind_addr = format!("127.0.0.1:{}", config.server_port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
@@ -34,64 +51,194 @@ pub async fn serve(config: Config, db: SqliteConnection) {
     axum::serve(listener, routes).await.unwrap();
 }
 
-fn json_result<T: Serialize>(result: anyhow::Result<T>) -> Response<Body> {
-    #[derive(Serialize)]
-    struct OkWrapper<T> {
-        success: bool,
-        data: T,
-    }
+#[derive(Debug, Error)]
+enum ApiError {
+    #[error(transparent)]
+    Data(#[from] GetDataError),
+    #[error(transparent)]
+    Unknown(anyhow::Error),
+}
 
-    fn make_err(err: String) -> Response<Body> {
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let status = match self {
+            ApiError::Data(GetDataError::NotFound) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
         #[derive(Serialize)]
-        struct ErrorWrapper {
-            success: bool,
-            error: String,
+        struct Error {
+            message: String,
         }
-        let err_data = serde_json::to_string(&ErrorWrapper {
-            success: false,
-            error: err,
-        })
-        .expect("why");
+        let error = Error {
+            message: self.to_string(),
+        };
+        let error = serde_json::to_string(&error).expect("why");
 
         Response::builder()
-            // TODO: better error codes
-            .status(StatusCode::GONE)
+            .status(status)
             .header("content-type", "application/json; charset=utf-8")
-            .body(Body::from_stream(ReaderStream::new(io::Cursor::new(
-                err_data,
-            ))))
+            .body(Body::new(error))
             .unwrap()
-    }
-
-    match result {
-        Ok(data) => match serde_json::to_string(&OkWrapper {
-            success: true,
-            data,
-        }) {
-            Ok(data) => Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json; charset=utf-8")
-                .body(Body::from_stream(ReaderStream::new(io::Cursor::new(data))))
-                .unwrap(),
-            Err(err) => make_err(err.to_string()),
-        },
-        Err(err) => make_err(err.to_string()),
     }
 }
 
-#[axum::debug_handler]
 async fn api_get_post(
     State(state): State<SharedServerState>,
-    Path((viewer_id, post_id)): Path<(u64, u64)>,
-) -> Response<Body> {
-    json_result(get_cohost_post(&state.ctx, viewer_id, post_id).await)
+    Path(post): Path<u64>,
+) -> response::Result<Response> {
+    let post = get_cohost_post(&state.ctx, 0, post)
+        .await
+        .map_err(ApiError::Data)?;
+    let body = serde_json::to_string(&post).map_err(|e| ApiError::Unknown(e.into()))?;
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/json; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_single_post(
+    State(state): State<SharedServerState>,
+    Path((project, post)): Path<(String, String)>,
+) -> response::Result<Response> {
+    get_single_post_impl(&state, &project, &post)
+        .await
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")).into())
+}
+
+fn render_error_page(state: &ServerState, status: StatusCode, message: String) -> Response {
+    let mut template_ctx = Context::new();
+    template_ctx.insert("message", &message);
+
+    let Ok(body) = state.tera.render("error.html", &template_ctx) else {
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::new("failed to render error".to_string()))
+            .unwrap();
+    };
+
+    Response::builder()
+        .status(status)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap()
+}
+
+#[derive(Debug, Error)]
+enum GetSinglePostError {
+    #[error("invalid post ID")]
+    InvalidPostId,
+    #[error("post not found")]
+    PostNotFound,
+    #[error("error loading comments: {0}")]
+    Comments(GetDataError),
+    #[error("error rendering post {0}: {1}")]
+    Render(u64, anyhow::Error),
+    #[error(transparent)]
+    Unknown(anyhow::Error),
+}
+
+impl GetSinglePostError {
+    fn status(&self) -> StatusCode {
+        match self {
+            GetSinglePostError::InvalidPostId => StatusCode::BAD_REQUEST,
+            GetSinglePostError::PostNotFound => StatusCode::NOT_FOUND,
+            GetSinglePostError::Comments(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            GetSinglePostError::Render(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            GetSinglePostError::Unknown(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+async fn get_single_post_impl(
+    state: &ServerState,
+    project: &str,
+    post: &str,
+) -> Result<Response, GetSinglePostError> {
+    let post_id = post
+        .split('-')
+        .next()
+        .and_then(|id| id.parse().ok())
+        .ok_or(GetSinglePostError::InvalidPostId)?;
+
+    let post = match get_cohost_post(&state.ctx, 0, post_id).await {
+        Ok(post) => post,
+        Err(GetDataError::NotFound) => return Err(GetSinglePostError::PostNotFound),
+        Err(err) => return Err(GetSinglePostError::Unknown(err.into())),
+    };
+
+    if post.posting_project.handle != project {
+        return Err(GetSinglePostError::PostNotFound);
+    }
+
+    let comments = match get_cohost_comments_for_share_tree(&state.ctx, 0, &post).await {
+        Ok(comments) => comments,
+        Err(err) => return Err(GetSinglePostError::Comments(err.into())),
+    };
+
+    let mut rendered_posts = HashMap::new();
+
+    for post in std::iter::once(&post).chain(post.share_tree.iter()) {
+        let result = state
+            .post_renderer
+            .render_post(PostRenderRequest {
+                blocks: post.blocks.clone(),
+                published_at: post
+                    .published_at
+                    .clone()
+                    .unwrap_or_else(|| Utc::now().to_rfc3339()),
+                has_cohost_plus: post.has_cohost_plus,
+                disable_embeds: true,
+                external_links_in_new_tab: true,
+            })
+            .await
+            .map_err(|e| GetSinglePostError::Render(post.post_id, e))?;
+
+        rendered_posts.insert(post.post_id, result);
+    }
+
+    let mut template_ctx = Context::new();
+    template_ctx.insert("post", &post);
+    template_ctx.insert("comments", &comments);
+    template_ctx.insert("rendered_posts", &rendered_posts);
+
+    let body = state
+        .tera
+        .render("single_post.html", &template_ctx)
+        .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+#[derive(Debug, Error)]
+enum GetDataError {
+    #[error("not found")]
+    NotFound,
+    #[error(transparent)]
+    OtherQuery(DieselError),
+    #[error("data error: {0}")]
+    DbData(#[from] DbDataError),
+}
+
+impl From<DieselError> for GetDataError {
+    fn from(value: DieselError) -> Self {
+        match value {
+            DieselError::NotFound => Self::NotFound,
+            value => Self::OtherQuery(value),
+        }
+    }
 }
 
 async fn get_cohost_project(
     ctx: &CohostContext,
     viewer_id: u64,
     project_id: u64,
-) -> anyhow::Result<ProjectFromCohost> {
+) -> Result<ProjectFromCohost, GetDataError> {
     let project = ctx.project(project_id).await?;
 
     let project_data = project.data()?;
@@ -125,7 +272,7 @@ async fn get_cohost_post(
     ctx: &CohostContext,
     viewer_id: u64,
     post_id: u64,
-) -> anyhow::Result<PostFromCohost> {
+) -> Result<PostFromCohost, GetDataError> {
     // while this could be made more efficient,
     let post = ctx.post(post_id).await?;
 
@@ -197,4 +344,111 @@ async fn get_cohost_post(
         tags,
         transparent_share_of_post_id,
     })
+}
+
+async fn get_cohost_comments_for_share_tree(
+    ctx: &CohostContext,
+    viewer_id: u64,
+    post: &PostFromCohost,
+) -> Result<HashMap<u64, Vec<CommentFromCohost>>, GetDataError> {
+    let mut comments = HashMap::with_capacity(post.share_tree.len() + 1);
+
+    comments.insert(
+        post.post_id,
+        get_cohost_comments(ctx, viewer_id, post.post_id, post.is_editor).await?,
+    );
+
+    for post in &post.share_tree {
+        comments.insert(
+            post.post_id,
+            get_cohost_comments(ctx, viewer_id, post.post_id, post.is_editor).await?,
+        );
+    }
+
+    Ok(comments)
+}
+
+async fn get_cohost_comments(
+    ctx: &CohostContext,
+    viewer_id: u64,
+    post_id: u64,
+    is_editor: bool,
+) -> Result<Vec<CommentFromCohost>, GetDataError> {
+    let comments = ctx.get_comments(post_id).await?;
+
+    let mut projects = HashMap::new();
+    for comment in &comments {
+        if let Some(project) = comment.posting_project_id {
+            let project = project as u64;
+            if !projects.contains_key(&project) {
+                projects.insert(project, get_cohost_project(ctx, viewer_id, project).await?);
+            }
+        }
+    }
+
+    type ByParent = HashMap<String, Vec<CommentFromCohost>>;
+    let mut by_parent: ByParent = HashMap::new();
+    for comment in comments {
+        let comment_data = comment.data()?;
+
+        let is_viewer_comment = comment
+            .posting_project_id
+            .map_or(false, |p| p as u64 == viewer_id);
+
+        let cohost_comment = CommentFromCohost {
+            poster: comment
+                .posting_project_id
+                .and_then(|proj| projects.get(&(proj as u64)).cloned()),
+            comment: InnerComment {
+                body: comment_data.body,
+                comment_id: comment.id.clone(),
+                children: Vec::new(),
+                deleted: comment_data.deleted,
+                has_cohost_plus: comment_data.has_cohost_plus,
+                hidden: comment_data.hidden,
+                in_reply_to: comment.in_reply_to_id.clone(),
+                post_id,
+                posted_at_iso: "".to_string(),
+            },
+            can_edit: if is_viewer_comment {
+                CommentPermission::Allowed
+            } else {
+                CommentPermission::NotAllowed
+            },
+            can_hide: if is_editor {
+                CommentPermission::Allowed
+            } else {
+                CommentPermission::NotAllowed
+            },
+            can_interact: CommentPermission::Allowed,
+        };
+        by_parent
+            .entry(comment.in_reply_to_id.unwrap_or_default())
+            .or_default()
+            .push(cohost_comment);
+    }
+
+    fn collect(by_parent: &mut ByParent, parent: &str) -> Vec<CommentFromCohost> {
+        let mut comments = Vec::new();
+
+        if let Some(items) = by_parent.remove(parent) {
+            comments.reserve(items.len());
+
+            for mut item in items {
+                item.comment.children = collect(by_parent, &item.comment.comment_id);
+                comments.push(item);
+            }
+        }
+
+        comments
+    }
+
+    let mut comments = collect(&mut by_parent, "");
+
+    // comments without parents? I dunno
+    for items in by_parent.into_values() {
+        comments.extend(items);
+    }
+
+    Ok(comments)
 }

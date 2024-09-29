@@ -16,6 +16,7 @@ mod dl;
 mod liked;
 mod post;
 mod project;
+mod render;
 mod res_ref;
 mod schema;
 mod server;

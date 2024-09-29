@@ -1,7 +1,7 @@
 use crate::project::ProjectFromCohost;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentFromCohost {
     pub poster: Option<ProjectFromCohost>,
@@ -11,7 +11,7 @@ pub struct CommentFromCohost {
     pub can_interact: CommentPermission,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InnerComment {
     pub body: String,
@@ -26,7 +26,7 @@ pub struct InnerComment {
     pub posted_at_iso: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CommentPermission {
     Allowed,

@@ -67,10 +67,14 @@ impl Drop for CurrentStateV1 {
     }
 }
 
-fn ok_or_quit<T>(r: anyhow::Result<T>) -> T {
+fn ok_or_quit<T, E>(r: Result<T, E>) -> T
+where
+    E: Into<anyhow::Error>,
+{
     match r {
         Ok(r) => r,
         Err(e) => {
+            let e = e.into();
             error!("{e:?}");
             std::process::exit(1);
         }

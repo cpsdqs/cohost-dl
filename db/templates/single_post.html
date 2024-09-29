@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% set post_title = post.headline -%}
+    {%- if not post_title -%}
+        {%- set post_title = "post from @" ~ post.postingProject.handle -%}
+    {%- endif -%}
+    <title>cohost archive! - {{ post_title }}</title>
+</head>
+<body>
+<header>
+    hello
+</header>
+<div class="page-container">
+    {% for post in post.shareTree %}
+        <blockquote class="temporary">
+            <h1>@{{ post.postingProject.handle }}:</h1>
+            {% if post.transparentShareOfPostId %}
+                transparent share
+            {% endif %}
+            <h2>{{ post.headline }}</h2>
+            {{ rendered_posts[post.postId].html | safe }}
+        </blockquote>
+    {% endfor %}
+    <article class="temporary">
+        <h1>@{{ post.postingProject.handle }}:</h1>
+        <h2>{{ post.headline }}</h2>
+        {{ rendered_posts[post.postId].html | safe }}
+    </article>
+</div>
+</body>
+</html>

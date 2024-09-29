@@ -8,13 +8,14 @@ use crate::project::{
 };
 use crate::res_ref::ResourceRefs;
 use crate::trpc::{LoginLoggedIn, SinglePost};
-use anyhow::{bail, Context};
+use anyhow::Context;
 use diesel::prelude::*;
 use diesel::{Insertable, RunQueryDsl};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::Path;
+use thiserror::Error;
 use tokio::sync::Mutex;
 
 /// Select fields from posts to store in the database blob
@@ -158,6 +159,14 @@ pub struct DbComment {
     pub data_version: i32,
 }
 
+#[derive(Debug, Error)]
+pub enum DbDataError {
+    #[error(transparent)]
+    Serde(#[from] rmp_serde::decode::Error),
+    #[error("unknown data version {0}")]
+    Version(i32),
+}
+
 impl DbPost {
     fn from_post(post: &PostFromCohost, data: Vec<u8>, data_version: i32) -> Self {
         Self {
@@ -174,11 +183,11 @@ impl DbPost {
         }
     }
 
-    pub fn data(&self) -> anyhow::Result<PostDataV1> {
+    pub fn data(&self) -> Result<PostDataV1, DbDataError> {
         if self.data_version == 1 {
             Ok(rmp_serde::from_slice(&self.data)?)
         } else {
-            bail!("unknown data version {}", self.data_version)
+            Err(DbDataError::Version(self.data_version))
         }
     }
 }
@@ -195,11 +204,11 @@ impl DbProject {
         }
     }
 
-    pub fn data(&self) -> anyhow::Result<ProjectDataV1> {
+    pub fn data(&self) -> Result<ProjectDataV1, DbDataError> {
         if self.data_version == 1 {
             Ok(rmp_serde::from_slice(&self.data)?)
         } else {
-            bail!("unknown data version {}", self.data_version)
+            Err(DbDataError::Version(self.data_version))
         }
     }
 }
@@ -222,11 +231,11 @@ impl DbComment {
         }
     }
 
-    pub fn data(&self) -> anyhow::Result<CommentDataV1> {
+    pub fn data(&self) -> Result<CommentDataV1, DbDataError> {
         if self.data_version == 1 {
             Ok(rmp_serde::from_slice(&self.data)?)
         } else {
-            bail!("unknown data version {}", self.data_version)
+            Err(DbDataError::Version(self.data_version))
         }
     }
 }
@@ -309,7 +318,7 @@ impl CohostContext {
         Ok(result.into_iter().map(|i| i as u64).collect())
     }
 
-    pub async fn project(&self, project_id: u64) -> anyhow::Result<DbProject> {
+    pub async fn project(&self, project_id: u64) -> QueryResult<DbProject> {
         use crate::schema::projects::dsl::*;
 
         let mut db = self.db.lock().await;
@@ -339,7 +348,7 @@ impl CohostContext {
         Ok(count > 0)
     }
 
-    pub async fn has_post(&self, post_id: u64) -> anyhow::Result<bool> {
+    pub async fn has_post(&self, post_id: u64) -> QueryResult<bool> {
         use crate::schema::posts::dsl::*;
         let mut db = self.db.lock().await;
         let db = &mut *db;
@@ -348,7 +357,7 @@ impl CohostContext {
         Ok(count > 0)
     }
 
-    pub async fn is_liked(&self, project_id: u64, post_id: u64) -> anyhow::Result<bool> {
+    pub async fn is_liked(&self, project_id: u64, post_id: u64) -> QueryResult<bool> {
         use crate::schema::likes::dsl::*;
         let mut db = self.db.lock().await;
         let db = &mut *db;
@@ -361,7 +370,7 @@ impl CohostContext {
         Ok(count > 0)
     }
 
-    pub async fn post(&self, post_id: u64) -> anyhow::Result<DbPost> {
+    pub async fn post(&self, post_id: u64) -> QueryResult<DbPost> {
         use crate::schema::posts::dsl::*;
 
         let mut db = self.db.lock().await;
@@ -405,7 +414,7 @@ impl CohostContext {
         Ok(res_items)
     }
 
-    pub async fn get_post_tags(&self, the_post_id: u64) -> anyhow::Result<Vec<String>> {
+    pub async fn get_post_tags(&self, the_post_id: u64) -> QueryResult<Vec<String>> {
         use crate::schema::post_tags::dsl::*;
 
         let mut db = self.db.lock().await;
@@ -446,6 +455,15 @@ impl CohostContext {
             .first(db)?;
 
         Ok(project_handle)
+    }
+
+    pub async fn get_comments(&self, the_post_id: u64) -> QueryResult<Vec<DbComment>> {
+        use crate::schema::comments::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        comments.filter(post_id.eq(the_post_id as i32)).load(db)
     }
 
     pub async fn total_post_resources_count(&self) -> anyhow::Result<u64> {
