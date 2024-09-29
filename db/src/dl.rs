@@ -140,7 +140,7 @@ async fn load_likes(
 
         page += 1;
         count += feed.posts.len();
-        bar.set_message(format!("page {page} ({count} posts)"));
+        bar.set_message(format!("liked posts page {page} ({count} posts)"));
 
         skip_posts += feed.pagination_mode.ideal_page_stride;
         ref_timestamp = Some(feed.pagination_mode.ref_timestamp);
@@ -175,7 +175,7 @@ async fn load_profile_posts(
     for page in 0.. {
         let posts = ctx.posts_profile_posts(&project.handle, page).await?;
 
-        bar.set_message(format!("page {page} ({count} posts)"));
+        bar.set_message(format!("@{} page {page} ({count} posts)", project.handle));
 
         for post in &posts.posts {
             ctx.insert_post(state, login, post, false).await?;
@@ -622,8 +622,6 @@ pub async fn download(config: Config, db: SqliteConnection) {
     }
 
     ok_or_quit(state.lock().await.store_state());
-
-    // TODO: render
 
     info!("Done");
 }
