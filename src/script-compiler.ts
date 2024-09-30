@@ -1093,7 +1093,9 @@ export async function generateFrontend(
             ctx.getCleanPath(`${srcDir}/node_modules/.pnpm`),
         )
     ) {
-        npmPackageItems.push(item.name);
+        if (item.isDirectory) {
+            npmPackageItems.push(item.name);
+        }
     }
     npmPackageItems.sort();
 
