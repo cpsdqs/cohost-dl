@@ -60,7 +60,7 @@ export async function loadCohostSource(ctx: CohostContext): Promise<string> {
 
                     if (!content) continue;
 
-                    const urlPath = decodeURI(url.pathname).replace(/[\\|]/g, '_').replace(/^\/+/, '');
+                    const urlPath = decodeURI(url.pathname).replace(/[\\|?%*:"<>]/g, '_').replace(/^\/+/, '');
                     const filePath = `${rootDir}/${urlPath}`;
 
                     await ctx.write(filePath, content);
