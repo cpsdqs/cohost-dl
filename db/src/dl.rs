@@ -256,15 +256,33 @@ async fn load_comments_for_posts(
     ctx: &CohostContext,
     state: &Mutex<CurrentStateV1>,
     login: &LoginLoggedIn,
-    posts: Vec<u64>,
+    mut posts: Vec<u64>,
 ) -> anyhow::Result<()> {
     let progress = ProgressBar::new(posts.len() as u64);
     progress.set_style(long_progress_style());
 
+    // use reverse ID order because later shares might have comments for earlier posts, saving time
+    posts.sort();
+    posts.reverse();
+
     let mut count = 0;
     for post in posts {
         progress.inc(1);
-        let project_handle = ctx.posting_project_handle(post).await?;
+        let (project_id, project_handle) = ctx.posting_project_handle(post).await?;
+
+        let already_has_comments = state
+            .lock()
+            .await
+            .projects
+            .entry(project_id)
+            .or_default()
+            .has_comments
+            .contains(&post);
+
+        if already_has_comments {
+            trace!("skipping {post} because we already have comments, probably from a share");
+            continue;
+        }
 
         progress.set_message(format!("{project_handle}/{post}"));
 

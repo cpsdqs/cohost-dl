@@ -441,20 +441,20 @@ impl CohostContext {
         Ok(project_id as u64)
     }
 
-    pub async fn posting_project_handle(&self, post_id: u64) -> anyhow::Result<String> {
+    pub async fn posting_project_handle(&self, post_id: u64) -> anyhow::Result<(u64, String)> {
         use crate::schema::posts::dsl as posts;
         use crate::schema::projects::dsl as projects;
 
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
-        let project_handle: String = projects::projects
+        let (id, handle): (i32, String) = projects::projects
             .inner_join(posts::posts)
             .filter(posts::id.eq(post_id as i32))
-            .select(projects::handle)
+            .select((projects::id, projects::handle))
             .first(db)?;
 
-        Ok(project_handle)
+        Ok((id as u64, handle))
     }
 
     pub async fn get_comments(&self, the_post_id: u64) -> QueryResult<Vec<DbComment>> {
