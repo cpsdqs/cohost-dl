@@ -96,7 +96,7 @@ impl CohostContext {
                 Ok(res) => res,
                 Err(e) if tries < MAX_RETRIES => {
                     error!(
-                        "GET {url}: {e}. trying again (try {}/{MAX_RETRIES})",
+                        "{e}. trying again (try {}/{MAX_RETRIES})",
                         tries + 1
                     );
                     continue;
