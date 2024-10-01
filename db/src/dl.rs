@@ -174,14 +174,26 @@ async fn load_profile_posts(
 
     let bar = ProgressBar::new_spinner();
     bar.enable_steady_tick(Duration::from_millis(100));
+    bar.set_message(format!("@{} first 1", project.handle));
 
     let mut count = 0;
     for page in 0.. {
         let posts = ctx.posts_profile_posts(&project.handle, page).await?;
 
-        bar.set_message(format!("@{} page {page} ({count} posts)", project.handle));
+        let message = format!(
+            "@{} page {} ({count} posts)",
+            project.handle,
+            page + 1
+        );
+        bar.set_message(message.clone());
 
-        for post in &posts.posts {
+        for (i, post) in posts.posts.iter().enumerate() {
+            bar.set_message(format!(
+                "{message} ← adding post {i}/{} (ID {})",
+                posts.posts.len(),
+                post.post_id
+            ));
+
             ctx.insert_post(state, login, post, false).await?;
         }
 

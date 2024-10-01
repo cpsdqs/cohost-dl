@@ -11,6 +11,7 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use thiserror::Error;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 const USER_AGENT: &str = "cohost-dl/2.0";
 const TOTAL_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -46,6 +47,8 @@ pub enum GetError {
     Other(anyhow::Error),
 }
 
+const MAX_RETRIES: usize = 10;
+
 impl CohostContext {
     pub fn new(cookie: String, root_dir: PathBuf, db: Mutex<SqliteConnection>) -> Self {
         let client = Client::builder()
@@ -69,31 +72,65 @@ impl CohostContext {
 
     pub async fn get_text(&self, url: impl IntoUrl) -> Result<String, GetError> {
         let url = url.into_url().map_err(GetError::Url)?;
-        trace!("GET {url}");
+        let mut tries = 0;
 
-        let mut req = self.client.get(url.clone());
+        loop {
+            if tries > 0 {
+                let wait = 1.8_f64.powf(tries as f64) - 1.;
+                info!("try {}: waiting for {wait:.02}s before continuing to be polite", tries + 1);
+                sleep(Duration::from_secs_f64(wait)).await;
+            }
 
-        if url.domain() == Some("cohost.org") {
-            req = req.header("cookie", &self.cookie);
-        }
+            tries += 1;
+            trace!("GET {url}");
 
-        let res = req
-            .send()
-            .await
-            .map_err(|e| GetError::Req(url.clone(), e))?;
+            let mut req = self.client.get(url.clone());
 
-        let status = res.status();
-        let text = res
-            .text()
-            .await
-            .map_err(|e| GetError::Req(url.clone(), e))?;
+            if url.domain() == Some("cohost.org") {
+                req = req.header("cookie", &self.cookie);
+            }
 
-        if status.is_success() {
-            Ok(text)
-        } else if status == StatusCode::NOT_FOUND {
-            Err(GetError::NotFound(url, text))
-        } else {
-            Err(GetError::OtherStatus(url, status, text))
+            let res = req.send().await.map_err(|e| GetError::Req(url.clone(), e));
+
+            let res = match res {
+                Ok(res) => res,
+                Err(e) if tries < MAX_RETRIES => {
+                    error!(
+                        "GET {url}: {e}. trying again (try {}/{MAX_RETRIES})",
+                        tries + 1
+                    );
+                    continue;
+                }
+                e => e?,
+            };
+
+            let status = res.status();
+            let text = res.text().await.map_err(|e| GetError::Req(url.clone(), e));
+
+            let text = match text {
+                Ok(text) => text,
+                Err(e) if tries < MAX_RETRIES => {
+                    error!(
+                        "{e}. trying again (try {}/{MAX_RETRIES})",
+                        tries + 1
+                    );
+                    continue;
+                }
+                e => e?,
+            };
+
+            if status.is_success() {
+                return Ok(text);
+            } else if status == StatusCode::NOT_FOUND {
+                return Err(GetError::NotFound(url, text));
+            } else if tries < MAX_RETRIES {
+                error!(
+                    "{status}: {text}. trying again (try {}/{MAX_RETRIES})",
+                    tries + 1
+                );
+            } else {
+                return Err(GetError::OtherStatus(url, status, text));
+            }
         }
     }
 
