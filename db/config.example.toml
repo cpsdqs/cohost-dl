@@ -20,6 +20,11 @@ load_profile_posts = [
     'example-handle',
 ]
 
+# load all posts from these tags (without leading #)
+load_tagged_posts = [
+    'interactable',
+]
+
 # load all posts from all followed projects
 load_dashboard = false
 

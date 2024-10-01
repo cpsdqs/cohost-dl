@@ -28,12 +28,20 @@ pub struct CurrentStateV1 {
     pub has_follows: HashSet<u64>,
     pub projects: HashMap<u64, ProjectState>,
     pub failed_urls: Vec<String>,
+    #[serde(default)]
+    pub tagged_posts: HashMap<String, TaggedPostsState>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProjectState {
     pub has_all_posts: bool,
     pub has_comments: HashSet<u64>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct TaggedPostsState {
+    pub has_all_posts: bool,
+    pub has_up_to: Option<(u64, u64)>,
 }
 
 impl CurrentStateV1 {
@@ -174,17 +182,13 @@ async fn load_profile_posts(
 
     let bar = ProgressBar::new_spinner();
     bar.enable_steady_tick(Duration::from_millis(100));
-    bar.set_message(format!("@{} first 1", project.handle));
+    bar.set_message(format!("@{} first page", project.handle));
 
     let mut count = 0;
     for page in 0.. {
         let posts = ctx.posts_profile_posts(&project.handle, page).await?;
 
-        let message = format!(
-            "@{} page {} ({count} posts)",
-            project.handle,
-            page + 1
-        );
+        let message = format!("@{} page {} ({count} posts)", project.handle, page + 1);
         bar.set_message(message.clone());
 
         for (i, post) in posts.posts.iter().enumerate() {
@@ -212,6 +216,115 @@ async fn load_profile_posts(
         .projects
         .get_mut(&project_id)
         .unwrap()
+        .has_all_posts = true;
+
+    Ok(())
+}
+
+async fn load_tagged_posts(
+    ctx: &CohostContext,
+    state: &Mutex<CurrentStateV1>,
+    login: &LoginLoggedIn,
+    tag: &str,
+) -> anyhow::Result<()> {
+    info!("loading all posts tagged with #{tag}");
+
+    let bar = ProgressBar::new_spinner();
+    bar.enable_steady_tick(Duration::from_millis(100));
+    bar.set_message(format!("#{tag} first page"));
+
+    let saved_state = state
+        .lock()
+        .await
+        .tagged_posts
+        .entry(tag.to_string())
+        .or_default()
+        .has_up_to;
+
+    let (mut ref_timestamp, mut skip_posts) = if let Some(state) = saved_state {
+        (Some(state.0), state.1)
+    } else {
+        (None, 0)
+    };
+
+    let mut has_related_tags = false;
+    let mut canonical_tag = None;
+
+    let mut count = 0;
+    let mut has_next = true;
+    while has_next {
+        let feed = ctx
+            .load_tagged_posts(tag, ref_timestamp, skip_posts)
+            .await?;
+
+        if !has_related_tags {
+            let canonical = feed
+                .synonyms_and_related_tags
+                .iter()
+                .find(|item| item.content.to_lowercase() == tag.to_lowercase());
+            let canonical = if let Some(canonical) = canonical {
+                canonical_tag = Some(canonical.content.clone());
+                canonical.content.clone()
+            } else {
+                warn!("could not determine canonical capitalization of #{tag}");
+                tag.to_string()
+            };
+
+            for item in feed.synonyms_and_related_tags {
+                if item.content == canonical {
+                    // self relationship is always synonym
+                    continue;
+                }
+
+                ctx.insert_related_tags(&canonical, &item.content, item.relationship)
+                    .await
+                    .with_context(|| format!("inserting related tag for #{tag}"))?;
+            }
+            has_related_tags = true;
+        }
+
+        let display_tag = canonical_tag.as_deref().unwrap_or(tag);
+
+        skip_posts += feed.pagination_mode.ideal_page_stride;
+        ref_timestamp = Some(feed.pagination_mode.ref_timestamp);
+        has_next = feed.pagination_mode.more_pages_forward;
+
+        let message = format!("#{display_tag} offset {} ({count} posts)", skip_posts);
+        bar.set_message(message.clone());
+
+        for (i, post) in feed.posts.iter().enumerate() {
+            bar.set_message(format!(
+                "{message} ← adding post {i}/{} (ID {})",
+                feed.posts.len(),
+                post.post_id
+            ));
+
+            ctx.insert_post(state, login, post, false).await?;
+        }
+
+        state
+            .lock()
+            .await
+            .tagged_posts
+            .entry(tag.to_string())
+            .or_default()
+            .has_up_to = Some((feed.pagination_mode.ref_timestamp, skip_posts));
+
+        count += feed.posts.len();
+        if feed.posts.is_empty() {
+            break;
+        }
+    }
+
+    bar.finish_and_clear();
+
+    info!("loaded all posts tagged with #{tag}: {count}");
+    state
+        .lock()
+        .await
+        .tagged_posts
+        .entry(tag.to_string())
+        .or_default()
         .has_all_posts = true;
 
     Ok(())
@@ -630,6 +743,22 @@ pub async fn download(config: Config, db: SqliteConnection) {
 
                 ctx.db.lock().await.batch_execute("vacuum;").unwrap();
             }
+        }
+    }
+
+    for tag in &config.load_tagged_posts {
+        let has_all_posts = state
+            .lock()
+            .await
+            .tagged_posts
+            .get(tag)
+            .map(|s| s.has_all_posts)
+            .unwrap_or(false);
+
+        if !has_all_posts {
+            ok_or_quit(load_tagged_posts(&ctx, &state, &login, tag).await);
+
+            ctx.db.lock().await.batch_execute("vacuum;").unwrap();
         }
     }
 

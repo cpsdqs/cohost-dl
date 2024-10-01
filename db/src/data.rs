@@ -1,6 +1,7 @@
 use crate::comment::CommentFromCohost;
 use crate::context::{CohostContext, GetError};
 use crate::dl::CurrentStateV1;
+use crate::feed::TagRelationship;
 use crate::post::{PostBlock, PostFromCohost};
 use crate::project::{
     AvatarShape, LoggedOutPostVisibility, ProjectAskSettings, ProjectContactCard, ProjectFlag,
@@ -882,6 +883,35 @@ impl CohostContext {
                 .has_comments
                 .insert(post);
         }
+
+        Ok(())
+    }
+
+    pub async fn insert_related_tags(
+        &self,
+        tag1: &str,
+        tag2: &str,
+        rel: TagRelationship,
+    ) -> QueryResult<()> {
+        use crate::schema::related_tags::dsl;
+
+        let (tag1, tag2) = if tag1 < tag2 {
+            (tag1, tag2)
+        } else {
+            (tag2, tag1)
+        };
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        diesel::insert_into(dsl::related_tags)
+            .values(&(
+                dsl::tag1.eq(tag1),
+                dsl::tag2.eq(tag2),
+                dsl::is_synonym.eq((rel == TagRelationship::Synonym) as i32),
+            ))
+            .on_conflict_do_nothing()
+            .execute(db)?;
 
         Ok(())
     }

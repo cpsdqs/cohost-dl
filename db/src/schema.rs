@@ -89,6 +89,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    related_tags (tag1, tag2) {
+        tag1 -> Text,
+        tag2 -> Text,
+        is_synonym -> Integer,
+    }
+}
+
+diesel::table! {
     resource_content_types (url) {
         url -> Text,
         content_type -> Text,
@@ -125,6 +133,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     posts,
     project_resources,
     projects,
+    related_tags,
     resource_content_types,
     url_files,
 );

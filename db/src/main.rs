@@ -13,7 +13,7 @@ mod comment;
 mod context;
 mod data;
 mod dl;
-mod liked;
+mod feed;
 mod post;
 mod project;
 mod render;
@@ -49,6 +49,8 @@ pub struct Config {
     pub load_likes: bool,
     #[serde(default)]
     pub load_profile_posts: Vec<String>,
+    #[serde(default)]
+    pub load_tagged_posts: Vec<String>,
     #[serde(default)]
     pub skip_follows: Vec<String>,
     #[serde(default)]
