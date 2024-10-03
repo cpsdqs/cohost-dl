@@ -478,6 +478,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "env_logger",
+ "hex",
  "html5ever",
  "indicatif",
  "kuchikiki",
@@ -488,6 +489,7 @@ dependencies = [
  "rmp-serde",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tera",
  "thiserror",
@@ -1215,6 +1217,12 @@ name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "home"

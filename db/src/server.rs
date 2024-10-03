@@ -18,6 +18,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tera::{Context, Tera};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -31,9 +32,14 @@ struct ServerState {
 type SharedServerState = Arc<ServerState>;
 
 pub async fn serve(config: Config, db: SqliteConnection) {
-    let ctx = CohostContext::new("".into(), PathBuf::from(config.root_dir), Mutex::new(db));
+    let ctx = CohostContext::new(
+        "".into(),
+        Duration::from_secs(1),
+        PathBuf::from(config.root_dir),
+        Mutex::new(db),
+    );
 
-    let mut tera = Tera::new("templates/*").unwrap();
+    let tera = Tera::new("templates/*").unwrap();
     let post_renderer = PostRenderer::new(4);
 
     let routes = Router::new()
@@ -180,6 +186,12 @@ async fn get_single_post_impl(
     let mut rendered_posts = HashMap::new();
 
     for post in std::iter::once(&post).chain(post.share_tree.iter()) {
+        let resources = state
+            .ctx
+            .get_resource_files_for_post(post.post_id)
+            .await
+            .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
+
         let result = state
             .post_renderer
             .render_post(PostRenderRequest {
@@ -191,6 +203,7 @@ async fn get_single_post_impl(
                 has_cohost_plus: post.has_cohost_plus,
                 disable_embeds: true,
                 external_links_in_new_tab: true,
+                resources,
             })
             .await
             .map_err(|e| GetSinglePostError::Render(post.post_id, e))?;

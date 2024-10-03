@@ -3,7 +3,8 @@ use deno_core::_ops::RustToV8;
 use deno_core::{ascii_str, ascii_str_include, serde_v8, v8, JsRuntime};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::oneshot;
 
@@ -15,6 +16,7 @@ pub struct PostRenderRequest {
     pub has_cohost_plus: bool,
     pub disable_embeds: bool,
     pub external_links_in_new_tab: bool,
+    pub resources: HashMap<String, PathBuf>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

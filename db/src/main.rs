@@ -40,6 +40,7 @@ enum Commands {
 pub struct Config {
     pub database: String,
     pub cookie: String,
+    pub request_timeout_secs: Option<u64>,
     pub root_dir: String,
     #[serde(default)]
     pub do_not_fetch_domains: Vec<String>,

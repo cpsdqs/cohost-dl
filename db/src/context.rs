@@ -3,6 +3,7 @@ use anyhow::{anyhow, bail, Context};
 use diesel::SqliteConnection;
 use reqwest::{Client, IntoUrl, StatusCode, Url};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -14,13 +15,12 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 
 const USER_AGENT: &str = "cohost-dl/2.0";
-const TOTAL_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_FILE_NAME_LENGTH_UTF8: usize = 250;
 
 pub struct CohostContext {
     cookie: String,
     client: Client,
-    root_dir: PathBuf,
+    pub root_dir: PathBuf,
     temp_dir: PathBuf,
     pub do_not_fetch_domains: HashSet<String>,
     pub(crate) db: Mutex<SqliteConnection>,
@@ -50,10 +50,15 @@ pub enum GetError {
 const MAX_RETRIES: usize = 10;
 
 impl CohostContext {
-    pub fn new(cookie: String, root_dir: PathBuf, db: Mutex<SqliteConnection>) -> Self {
+    pub fn new(
+        cookie: String,
+        req_timeout: Duration,
+        root_dir: PathBuf,
+        db: Mutex<SqliteConnection>,
+    ) -> Self {
         let client = Client::builder()
             .user_agent(USER_AGENT)
-            .timeout(TOTAL_REQUEST_TIMEOUT)
+            .timeout(req_timeout)
             .build()
             .expect("failed to create client");
 
@@ -77,7 +82,10 @@ impl CohostContext {
         loop {
             if tries > 0 {
                 let wait = 1.8_f64.powf(tries as f64) - 1.;
-                info!("try {}: waiting for {wait:.02}s before continuing to be polite", tries + 1);
+                info!(
+                    "try {}: waiting for {wait:.02}s before continuing to be polite",
+                    tries + 1
+                );
                 sleep(Duration::from_secs_f64(wait)).await;
             }
 
@@ -95,10 +103,7 @@ impl CohostContext {
             let res = match res {
                 Ok(res) => res,
                 Err(e) if tries < MAX_RETRIES => {
-                    error!(
-                        "{e}. trying again (try {}/{MAX_RETRIES})",
-                        tries + 1
-                    );
+                    error!("{e}. trying again (try {}/{MAX_RETRIES})", tries + 1);
                     continue;
                 }
                 e => e?,
@@ -110,10 +115,7 @@ impl CohostContext {
             let text = match text {
                 Ok(text) => text,
                 Err(e) if tries < MAX_RETRIES => {
-                    error!(
-                        "{e}. trying again (try {}/{MAX_RETRIES})",
-                        tries + 1
-                    );
+                    error!("{e}. trying again (try {}/{MAX_RETRIES})", tries + 1);
                     continue;
                 }
                 e => e?,
@@ -255,14 +257,11 @@ impl CohostContext {
             let mut file_path = self.root_dir.clone();
             file_path.push("rc");
             for seg in url.path_segments().unwrap() {
-                file_path.push(seg);
+                file_path.push(urlencoding::decode(seg)?.to_string());
             }
 
             Ok(Some(ResourceUrlProps {
-                fetch: Url::parse(&format!(
-                    "https://staging.cohostcdn.org/{}",
-                    urlencoding::decode(url.path())?
-                ))?,
+                fetch: Url::parse(&format!("https://staging.cohostcdn.org/{}", url.path()))?,
                 file_path,
                 can_fail: false,
                 skip_file_ext_check: true,
@@ -273,7 +272,7 @@ impl CohostContext {
                 if seg.is_empty() {
                     continue;
                 }
-                file_path.push(seg);
+                file_path.push(urlencoding::decode(seg)?.to_string());
             }
 
             Ok(Some(ResourceUrlProps {
@@ -310,6 +309,14 @@ impl CohostContext {
 
             if additional_path.is_empty() {
                 additional_path.push('_');
+            }
+
+            if additional_path.len() > 1536 {
+                // probably too long
+                let mut hasher = Sha256::new();
+                hasher.update(additional_path);
+                let result = hasher.finalize();
+                additional_path = format!("(hash)_{}", hex::encode(result));
             }
 
             for seg in additional_path.split('/') {
@@ -375,6 +382,32 @@ impl CohostContext {
         }
     }
 
+    /// Returns the file path where the resource is supposed to be stored at.
+    ///
+    /// This exists because an older version stored them at the wrong path.
+    pub async fn get_intended_resource_file_path(
+        &self,
+        url: &Url,
+    ) -> anyhow::Result<Option<PathBuf>> {
+        let Some(props) = self.props_for_resource_url(url)? else {
+            return Ok(None);
+        };
+
+        let needs_file_extension = !props.skip_file_ext_check
+            && does_resource_probably_need_a_file_extension(&props.file_path);
+
+        if needs_file_extension {
+            let content_type = self.get_res_content_type(&props.fetch).await?;
+            Ok(Some(Self::add_content_type_ext(
+                props.file_path,
+                &content_type.unwrap_or_default(),
+                false,
+            )))
+        } else {
+            Ok(Some(props.file_path))
+        }
+    }
+
     /// Loads a resource to a file.
     /// Returns file path (relative to out dir) or None if it shouldn't be loaded
     pub async fn load_resource_to_file(
@@ -383,6 +416,10 @@ impl CohostContext {
         state: &Mutex<CurrentStateV1>,
         loaded: Option<&mut bool>,
     ) -> anyhow::Result<Option<PathBuf>> {
+        if let Some(result) = self.get_url_file(&url).await? {
+            return Ok(Some(result));
+        }
+
         if state.lock().await.failed_urls.contains(&url.to_string()) {
             return Ok(None);
         }

@@ -48,5 +48,8 @@ load_project_resources = false
 # load images in comments
 load_comment_resources = false
 
+# how many seconds to wait before giving up on a request
+request_timeout_secs = 120
+
 # port when running the web server
 server_port = 26467

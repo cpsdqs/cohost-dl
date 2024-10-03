@@ -64,6 +64,7 @@
  *     hasCohostPlus: boolean,
  *     disableEmbeds: boolean,
  *     externalLinksInNewTab: boolean,
+ *     resources: Record<string, string>,
  * }}
  * @returns {{ html: string }}
  */

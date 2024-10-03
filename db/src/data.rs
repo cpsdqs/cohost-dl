@@ -14,8 +14,9 @@ use diesel::prelude::*;
 use diesel::{Insertable, RunQueryDsl};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
-use std::path::Path;
+use std::collections::{HashMap, VecDeque};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -387,6 +388,19 @@ impl CohostContext {
         let db = &mut *db;
 
         let result: i64 = posts.count().get_result(db)?;
+        Ok(result as u64)
+    }
+
+    pub async fn total_non_transparent_post_count(&self) -> anyhow::Result<u64> {
+        use crate::schema::posts::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i64 = posts
+            .filter(is_transparent_share.eq(false))
+            .count()
+            .get_result(db)?;
         Ok(result as u64)
     }
 
@@ -972,5 +986,89 @@ impl CohostContext {
             .execute(db)?;
 
         Ok(())
+    }
+
+    pub async fn get_resource_files_for_post(
+        &self,
+        post: u64,
+    ) -> QueryResult<HashMap<String, PathBuf>> {
+        use crate::schema::post_resources::dsl as res;
+        use crate::schema::url_files::dsl as files;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let items = files::url_files
+            .inner_join(res::post_resources.on(files::url.eq(res::url)))
+            .filter(res::post_id.eq(post as i32))
+            .select((files::url, files::file_path))
+            .load_iter::<(String, Vec<u8>), _>(db)?;
+
+        let mut res_items = HashMap::new();
+        for res in items {
+            let (url, path) = res?;
+            res_items.insert(
+                url,
+                // SAFETY: well, we stored it that way
+                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
+            );
+        }
+
+        Ok(res_items)
+    }
+
+    pub async fn total_url_file_count(&self) -> QueryResult<u64> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i64 = url_files.count().get_result(db)?;
+        Ok(result as u64)
+    }
+
+    pub async fn get_url_file(&self, the_url: &Url) -> QueryResult<Option<PathBuf>> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let path: Option<Vec<u8>> = url_files
+            .filter(url.eq(the_url.to_string()))
+            .select(file_path)
+            .first(db)
+            .optional()?;
+
+        Ok(path.map(|path| {
+            // SAFETY: well, we stored it that way
+            PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) })
+        }))
+    }
+
+    pub async fn get_url_files_batch(
+        &self,
+        offset: i64,
+        limit: i64,
+    ) -> QueryResult<Vec<(String, PathBuf)>> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        let items = url_files
+            .select((url, file_path))
+            .offset(offset)
+            .limit(limit)
+            .load_iter::<(String, Vec<u8>), _>(db)?;
+
+        let mut res_items = Vec::new();
+        for item in items {
+            let (the_url, path) = item?;
+            res_items.push((
+                the_url,
+                // SAFETY: well, we stored it that way
+                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
+            ));
+        }
+        Ok(res_items)
     }
 }

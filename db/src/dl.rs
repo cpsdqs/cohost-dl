@@ -342,7 +342,7 @@ async fn posts_without_comments(
 ) -> anyhow::Result<Vec<u64>> {
     let mut posts_without_comments = Vec::new();
 
-    let total_count = ctx.total_post_count().await?;
+    let total_count = ctx.total_non_transparent_post_count().await?;
     let progress = ProgressBar::new(total_count);
     progress.set_style(long_progress_style());
 
@@ -504,7 +504,7 @@ async fn par_load_resources<T: Send + Sync>(
     Ok(())
 }
 
-const RESOURCE_LOAD_BATCH_SIZE: u64 = 10;
+const RESOURCE_LOAD_BATCH_SIZE: u64 = 5;
 
 async fn load_post_resources(
     ctx: &CohostContext,
@@ -647,9 +647,63 @@ async fn load_comment_resources(
     Ok(())
 }
 
+async fn migrate_resource_file_paths(ctx: &CohostContext) -> anyhow::Result<()> {
+    let total_count = ctx.total_url_file_count().await?;
+
+    let progress = ProgressBar::new(total_count);
+    progress.set_style(long_progress_style());
+
+    progress.set_message("checking resource file paths");
+
+    let mut migrated = 0;
+    let mut offset = 0;
+    loop {
+        progress.set_position(offset as u64);
+
+        let url_files = ctx.get_url_files_batch(offset, 1000).await?;
+
+        offset += 1000;
+        if url_files.is_empty() {
+            break;
+        }
+
+        for (url, path) in url_files {
+            let Ok(url) = Url::parse(&url) else { continue };
+            let Some(intended_path) = ctx.get_intended_resource_file_path(&url).await? else {
+                continue;
+            };
+
+            let intended_path = intended_path.strip_prefix(&ctx.root_dir)?;
+
+            if path != intended_path {
+                trace!(
+                    "migrating resource file {} -> {}",
+                    path.display(),
+                    intended_path.display()
+                );
+
+                let from_path = ctx.root_dir.join(path);
+                let to_path = ctx.root_dir.join(intended_path);
+                fs::rename(from_path, to_path)?;
+                ctx.insert_url_file(&url, intended_path).await?;
+                migrated += 1;
+            }
+        }
+
+        progress.set_message(format!(
+            "checking resource file paths (migrated: {migrated})"
+        ));
+    }
+
+    progress.finish_and_clear();
+
+    Ok(())
+}
+
 pub async fn download(config: Config, db: SqliteConnection) {
     let mut ctx = CohostContext::new(
         config.cookie,
+        Duration::from_secs(config.request_timeout_secs.unwrap_or(120)),
         PathBuf::from(&config.root_dir),
         Mutex::new(db),
     );
@@ -773,6 +827,8 @@ pub async fn download(config: Config, db: SqliteConnection) {
         }
         ok_or_quit(load_comments_for_posts(&ctx, &state, &login, posts).await);
     }
+
+    ok_or_quit(migrate_resource_file_paths(&ctx).await);
 
     if config.load_post_resources {
         ok_or_quit(load_post_resources(&ctx, &state).await);
