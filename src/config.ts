@@ -8,6 +8,8 @@ export const PROJECTS = data.PROJECTS ?? [];
 
 export const SKIP_POSTS = data.SKIP_POSTS ?? [];
 
+export const SKIP_LIKES = data.SKIP_LIKES ?? false;
+
 export const DATA_PORTABILITY_ARCHIVE_PATH =
     data.DATA_PORTABILITY_ARCHIVE_PATH ?? "";
 

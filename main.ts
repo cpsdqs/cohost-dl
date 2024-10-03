@@ -5,6 +5,7 @@ import {
     POSTS,
     PROJECTS,
     SKIP_POSTS,
+    SKIP_LIKES,
 } from "./src/config.ts";
 import { CohostContext, POST_URL_REGEX } from "./src/context.ts";
 import { loadAllLikedPosts } from "./src/likes.ts";
@@ -86,7 +87,7 @@ if (isLoggedIn) {
     }
 
     // load all liked posts for the current page
-    if (!(await ctx.hasFile(`${currentProjectHandle}/liked.json`))) {
+    if (!(await ctx.hasFile(`${currentProjectHandle}/liked.json`)) && !SKIP_LIKES) {
         console.log(`loading likes for @${currentProjectHandle}`);
         const liked = await loadAllLikedPosts(ctx);
         await ctx.writeLargeJson(`${currentProjectHandle}/liked.json`, liked);
@@ -119,8 +120,11 @@ const errors: { url: string; error: Error }[] = [];
     for await (const item of Deno.readDir(ctx.getCleanPath(''))) {
         if (item.isDirectory) allProjectDirsProbably.push(item.name);
     }
+
     const likedPosts = await Promise.all(
         allProjectDirsProbably.map(async (handle) => {
+            if (SKIP_LIKES) return [];
+
             const file = `${handle}/liked.json`;
             if (await ctx.hasFile(file)) {
                 return ctx.readLargeJson(`${handle}/liked.json`);

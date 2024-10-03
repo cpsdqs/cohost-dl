@@ -246,6 +246,10 @@ function fixReactHydration(document: Document) {
         singlePostViewParent.childNodes[1],
     );
 
+    // we don't render the 'Cohost is read-only' alert
+    const readOnlyAlertProbably = document.querySelector(".co-header-alert");
+    readOnlyAlertProbably?.remove();
+
     // TODO: consider continuing?
     // current state: it at least doesn't delete the entire DOM during hydration.
     // As it turns out, full hydration is broken on actual real cohost.org as well, so maybe this is not really necessary...

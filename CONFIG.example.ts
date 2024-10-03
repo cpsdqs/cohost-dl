@@ -31,6 +31,9 @@ export const SKIP_POSTS = [
     9639936,
 ];
 
+// Skips downloading your likes
+export const SKIP_LIKES = false;
+
 // You can keep this set to '' if you don't have a data portability archive from cohost.
 // If you do have one, set this to the path to the directory that contains the `user.json` file.
 // e.g. if you have it at /Users/example/Desktop/cohost-data/user.json,
