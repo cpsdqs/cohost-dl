@@ -243,13 +243,36 @@ async function readPostFileBatch(
     };
 }
 
-function sortPostFileNames(postFileNames: string[]) {
+async function getPostFilePublishedDate(file: string) {
+    const html = await Deno.readTextFile(file);
+    const document = new DOMParser().parseFromString(html, "text/html");
+
+    const pageState = getPageState<ISinglePostView>(
+        document,
+        "single-post-view",
+    );
+
+    const { post } = pageState.query<{ post: IPost }>("posts.singlePost", {
+        handle: pageState.state.project.handle,
+        postId: pageState.state.postId,
+    });
+
+    return new Date(post.publishedAt);
+}
+
+async function sortPostFileNames(basePath: string, postFileNames: string[]) {
+    const dates = new Map(await Promise.all(postFileNames.map(async (file) => {
+        const date = await getPostFilePublishedDate(path.join(basePath, file));
+        return [file, date];
+    })));
+
     // newest to oldest
     postFileNames.sort((a, b) => {
-        const aMatch = a.match(/^(\d+)-/);
-        const bMatch = b.match(/^(\d+)-/);
-        if (aMatch && bMatch) {
-            return +bMatch[1] - +aMatch[1];
+        const aDate = dates.get(a);
+        const bDate = dates.get(b);
+
+        if (aDate && bDate) {
+            return bDate - aDate;
         }
         return b.localeCompare(a);
     });
@@ -317,7 +340,7 @@ export async function generateProjectIndex(
         return [];
     }
 
-    sortPostFileNames(postFileNames);
+    await sortPostFileNames(projectPostsDir, postFileNames);
 
     const postFileBatches: string[][] = toBatches(postFileNames, PAGE_STRIDE);
 
@@ -356,6 +379,7 @@ export async function generateProjectIndex(
 
     const search = createSearch();
     const searchTreeIndex: Record<string, number[]> = {};
+    const postDates: Record<string, string> = {};
     const seenPosts = new Set<number>();
 
     // add tree roots first
@@ -364,6 +388,7 @@ export async function generateProjectIndex(
             if (post.isRoot && !seenPosts.has(post.id)) {
                 search.add(post);
                 seenPosts.add(post.id);
+                postDates[post.id] = post.published;
             }
         }
     }
@@ -393,6 +418,9 @@ export async function generateProjectIndex(
     const data = {
         project,
         rewriteData,
+        sortedPosts: Object.keys(postDates)
+            .sort((a, b) => new Date(postDates[b]) - new Date(postDates[a]))
+            .map((id) => +id),
         searchTreeIndex,
         trpcState: {
             ...trpcState,
@@ -571,6 +599,7 @@ export async function generateAllPostsIndex(
 
     const data = {
         chunks,
+        sortedPosts: toBeAdded.map((post) => post.id),
         searchTreeIndex,
         trpcState,
     };

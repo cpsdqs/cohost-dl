@@ -40,20 +40,17 @@ import MiniSearch from "@internal/minisearch";
 import { IPostIndexedData, PAGE_STRIDE, PostSearchFlags } from "./shared.ts";
 import type { IPost, IProject } from "../model.ts";
 
-const { project, rewriteData, chunks, searchTreeIndex, trpcState } = JSON
+const { project, rewriteData, chunks, sortedPosts, searchTreeIndex, trpcState } = JSON
     .parse(
         document.querySelector("#post-index-data").innerHTML,
     ) as {
         project?: IProject;
         rewriteData?: { base: string; urls: Record<string, string> };
         chunks?: Record<string, string>;
+        sortedPosts: number[];
         searchTreeIndex: Record<string, number[]>;
         trpcState: object;
     };
-
-const allPostIds = [
-    ...new Set(Object.values(searchTreeIndex).flatMap((id) => id)),
-].sort((a, b) => b - a);
 
 const allProjects = [
     ...new Set(
@@ -438,7 +435,7 @@ function useFilteredPosts(search: IPostSearch) {
             if (searchIndexError) errors.push(searchIndexError);
         }
     } else {
-        posts = allPostIds.slice(start, end);
+        posts = sortedPosts.slice(start, end);
 
         if (project) {
             // FIXME: really unreliable
@@ -452,7 +449,7 @@ function useFilteredPosts(search: IPostSearch) {
             }
         }
 
-        maxPage = Math.floor((allPostIds.length - 1) / PAGE_STRIDE);
+        maxPage = Math.floor((sortedPosts.length - 1) / PAGE_STRIDE);
     }
 
     const {
