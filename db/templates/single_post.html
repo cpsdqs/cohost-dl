@@ -1,34 +1,43 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+{% import "project_sidebar.html" as project_sidebar %}
+{% import "post.html" as post %}
+{% import "comments.html" as comments %}
+{% extends "base.html" %}
+
+{% block title %}
     {% set post_title = post.headline -%}
     {%- if not post_title -%}
-        {%- set post_title = "post from @" ~ post.postingProject.handle -%}
+    {%- set post_title = "post from @" ~ post.postingProject.handle -%}
     {%- endif -%}
-    <title>cohost archive! - {{ post_title }}</title>
-</head>
-<body>
-<header>
-    hello
-</header>
-<div class="page-container">
-    {% for post in post.shareTree %}
-        <blockquote class="temporary">
-            <h1>@{{ post.postingProject.handle }}:</h1>
-            {% if post.transparentShareOfPostId %}
-                transparent share
-            {% endif %}
-            <h2>{{ post.headline }}</h2>
-            {{ rendered_posts[post.postId].html | safe }}
-        </blockquote>
-    {% endfor %}
-    <article class="temporary">
-        <h1>@{{ post.postingProject.handle }}:</h1>
-        <h2>{{ post.headline }}</h2>
-        {{ rendered_posts[post.postId].html | safe }}
-    </article>
+    cohost archive! - {{ post_title }}
+{% endblock title %}
+
+{% block base_header %}
+{% if post.postingProject.headerURL %}
+<img
+    class="profile-header-image co-container"
+    src="{{ post.postingProject.headerURL }}"
+    alt=""
+    role="presentation"
+/>
+{% endif %}
+{% endblock base_header %}
+
+{% block base_contents %}
+{{ project_sidebar::project_sidebar(project = post.postingProject, description = rendered_project_description) }}
+
+<div class="page-contents">
+    <div class="single-post-container">
+        {{ post::render(post = post) }}
+
+        <div id="comments">
+            {% for post in post.shareTree %}
+                {{ comments::render(post = post, comments = comments[post.postId]) }}
+            {% endfor %}
+
+            {{ comments::render(post = post, comments = comments[post.postId]) }}
+        </div>
+    </div>
 </div>
-</body>
-</html>
+
+{{ project_sidebar::project_sidebar_alt(project = post.postingProject) }}
+{% endblock base_contents %}

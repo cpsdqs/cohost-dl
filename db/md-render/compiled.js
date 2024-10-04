@@ -88,18 +88,21 @@ function renderPost(
                 </blockquote>
             `;
         } else if (block.type === "attachment") {
+            const hasResource = args.resources[block.attachment.fileURL];
+            const src = hasResource ? `/resource?url=${encodeURIComponent(block.attachment.fileURL)}` : block.attachment.fileURL;
+
             if (block.attachment.kind === "image") {
                 return `
                     <div>
                         <h3>this is an attachment block (image)</h3>
-                        <img style="max-width: 400px; max-height: 400px" src="${block.attachment.fileURL}" alt="${block.attachment.altText}" />
+                        <img style="max-width: 400px; max-height: 400px" src="${src}" alt="${block.attachment.altText}" />
                     </div>
                 `;
             } else if (block.attachment.kind === "audio") {
                 return `
                     <div>
                         <h3>this is an attachment block (audio)</h3>
-                        <audio src="${block.attachment.fileURL}" />
+                        <audio src="${src}" />
                     </div>
                 `;
             } else {
@@ -129,4 +132,21 @@ function renderPost(
     };
 }
 
+/**
+ * @typedef {{
+ *     markdown: string,
+ * }} MarkdownRenderRequest
+ *
+ * @param {MarkdownRenderRequest} args
+ * @returns {{ html: string }}
+ */
+function renderMarkdown(args) {
+    // TODO
+
+    return {
+        html: args.markdown,
+    };
+}
+
 globalThis.renderPost = renderPost;
+globalThis.renderMarkdown = renderMarkdown;

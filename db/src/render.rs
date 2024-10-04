@@ -24,17 +24,34 @@ pub struct PostRenderResult {
     html: String,
 }
 
-struct QueueItem {
-    req: PostRenderRequest,
-    ret: oneshot::Sender<anyhow::Result<PostRenderResult>>,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownRenderRequest {
+    pub markdown: String,
 }
 
-pub struct PostRenderer {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MarkdownRenderResult {
+    html: String,
+}
+
+enum QueueItem {
+    Post {
+        req: PostRenderRequest,
+        ret: oneshot::Sender<anyhow::Result<PostRenderResult>>,
+    },
+    Markdown {
+        req: MarkdownRenderRequest,
+        ret: oneshot::Sender<anyhow::Result<MarkdownRenderResult>>,
+    },
+}
+
+pub struct MarkdownRenderer {
     queue: Arc<Mutex<VecDeque<QueueItem>>>,
     signal: Arc<Condvar>,
 }
 
-impl PostRenderer {
+impl MarkdownRenderer {
     pub fn new(renderers: usize) -> Self {
         // is there a better solution to this? I am not going to find out right now
         let queue = Arc::new(Mutex::new(VecDeque::<QueueItem>::new()));
@@ -46,7 +63,7 @@ impl PostRenderer {
             let _ = std::thread::Builder::new()
                 .name(format!("post render {i}"))
                 .spawn(|| {
-                    let renderer = ThreadPostRenderer::new();
+                    let renderer = ThreadMarkdownRenderer::new();
 
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .build()
@@ -65,8 +82,16 @@ impl PostRenderer {
                                 }
                             };
 
-                            let result = renderer.render_post(item.req).await;
-                            let _ = item.ret.send(result);
+                            match item {
+                                QueueItem::Post { req, ret } => {
+                                    let result = renderer.render_post(req).await;
+                                    let _ = ret.send(result);
+                                }
+                                QueueItem::Markdown { req, ret } => {
+                                    let result = renderer.render_markdown(req).await;
+                                    let _ = ret.send(result);
+                                }
+                            }
                         }
                     });
 
@@ -82,7 +107,22 @@ impl PostRenderer {
 
         {
             let mut queue = self.queue.lock().unwrap();
-            queue.push_back(QueueItem { req, ret });
+            queue.push_back(QueueItem::Post { req, ret });
+            self.signal.notify_one();
+        }
+
+        recv.await?
+    }
+
+    pub async fn render_markdown(
+        &self,
+        req: MarkdownRenderRequest,
+    ) -> anyhow::Result<MarkdownRenderResult> {
+        let (ret, recv) = oneshot::channel();
+
+        {
+            let mut queue = self.queue.lock().unwrap();
+            queue.push_back(QueueItem::Markdown { req, ret });
             self.signal.notify_one();
         }
 
@@ -90,21 +130,19 @@ impl PostRenderer {
     }
 }
 
-struct ThreadPostRenderer {
+struct ThreadMarkdownRenderer {
     rt: RefCell<JsRuntime>,
     render_post_fn: v8::Global<v8::Function>,
+    render_markdown_fn: v8::Global<v8::Function>,
 }
 
-impl ThreadPostRenderer {
+impl ThreadMarkdownRenderer {
     fn new() -> Self {
         let mut rt = JsRuntime::new(Default::default());
-        rt.execute_script(
-            "render.js",
-            ascii_str_include!("../post-render/compiled.js"),
-        )
-        .expect("post render script error");
+        rt.execute_script("render.js", ascii_str_include!("../md-render/compiled.js"))
+            .expect("md render script error");
 
-        let render_post_fn = {
+        let (render_post_fn, render_markdown_fn) = {
             let main_context = rt.main_context();
             let main_context2 = rt.main_context();
 
@@ -119,12 +157,24 @@ impl ThreadPostRenderer {
             let render_post_fn = v8::Local::<v8::Function>::try_from(render_post_fn)
                 .expect("renderPost is not a function");
 
-            v8::Global::new(&mut scope, render_post_fn)
+            let render_post_fn = v8::Global::new(&mut scope, render_post_fn);
+
+            let render_markdown_name = ascii_str!("renderMarkdown").v8_string(&mut scope);
+            let render_markdown_fn = global
+                .get(&mut scope, render_markdown_name.into())
+                .expect("missing renderMarkdown global");
+            let render_markdown_fn = v8::Local::<v8::Function>::try_from(render_markdown_fn)
+                .expect("renderMarkdown is not a function");
+
+            let render_markdown_fn = v8::Global::new(&mut scope, render_markdown_fn);
+
+            (render_post_fn, render_markdown_fn)
         };
 
         Self {
             rt: RefCell::new(rt),
             render_post_fn,
+            render_markdown_fn,
         }
     }
 
@@ -139,6 +189,37 @@ impl ThreadPostRenderer {
         };
 
         let result = rt.call_with_args(&self.render_post_fn, &[options]);
+        let event_loop = rt.run_event_loop(Default::default());
+
+        let (result, event_loop) = tokio::join! {
+            result,
+            event_loop,
+        };
+
+        event_loop?;
+
+        let main_context = rt.main_context();
+        let mut scope = v8::HandleScope::with_context(rt.v8_isolate(), main_context);
+        let result = result?.to_v8(&mut scope);
+        let result = serde_v8::from_v8(&mut scope, result)?;
+
+        Ok(result)
+    }
+
+    async fn render_markdown(
+        &self,
+        options: MarkdownRenderRequest,
+    ) -> anyhow::Result<MarkdownRenderResult> {
+        let mut rt = self.rt.borrow_mut();
+
+        let options = {
+            let main_context = rt.main_context();
+            let mut scope = v8::HandleScope::with_context(rt.v8_isolate(), main_context);
+            let options = serde_v8::to_v8(&mut scope, options)?;
+            v8::Global::new(&mut scope, options)
+        };
+
+        let result = rt.call_with_args(&self.render_markdown_fn, &[options]);
         let event_loop = rt.run_event_loop(Default::default());
 
         let (result, event_loop) = tokio::join! {

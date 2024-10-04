@@ -1,0 +1,88 @@
+{% macro comment_item(comment) %}
+{% set date_fmt_title = "%a, %b %-d, %Y, %-I:%M %p" %}
+{% set date_fmt_text = "%-m/%-d/%Y, %-I:%M %p" %}
+<article class="co-comment-item" id="comment-{{ comment.comment.commentId }}">
+    <a
+        class="i-big-avatar co-drop-shadow"
+        href="/{{ comment.poster.handle }}"
+        title="@{{ comment.poster.handle }}">
+        <img
+            class="i-avatar co-avatar"
+            data-shape="{{ comment.poster.avatarShape }}"
+            src="{{ comment.poster.avatarURL }}"
+            alt="{{ comment.poster.handle }}"
+        />
+    </a>
+    <div class="i-comment">
+        <div class="i-header">
+            <img
+                class="i-avatar co-avatar"
+                data-shape="{{ comment.poster.avatarShape }}"
+                src="{{ comment.poster.avatarURL }}"
+                alt="{{ comment.poster.handle }}"
+            />
+
+            <a
+                class="co-project-display-name"
+                rel="author"
+                href="/{{ comment.poster.handle }}"
+                title="{{ comment.poster.displayName }}"
+            >
+                {{ comment.poster.displayName }}
+            </a>
+
+            <a
+                class="co-project-handle"
+                href="/{{ comment.poster.handle }}"
+            >
+                @{{ comment.poster.handle }}
+            </a>
+
+            <time
+                class="i-timestamp"
+                datetime="{{ comment.comment.postedAtISO }}"
+                title="{{ comment.comment.postedAtISO | date(format = date_fmt_title) }}"
+            >
+                <a href="/{{ comment.poster.handle }}/post/{{ post.filename }}">
+                    {{ comment.comment.postedAtISO | date(format = date_fmt_text) }}
+                </a>
+            </time>
+        </div>
+        <div class="i-contents prose">
+            {{ comment.comment.body }}
+            TODO: render
+        </div>
+    </div>
+</article>
+{% endmacro %}
+
+{% macro comment_tree(comment) %}
+<div class="co-comment-tree">
+    {{ comments::comment_item(comment = comment) }}
+    {% if comment.comment.children | length %}
+    <div class="i-replies">
+        {% for comment in comment.comment.children %}
+        {{ comments::comment_tree(comment = comment) }}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro comment_tree %}
+
+{% macro render(post, comments) %}
+{% if comments | length %}
+
+<div class="co-comments">
+    <h4 class="i-header">
+        in reply to <a class="i-post-ref" href="#post-{{ post.postId }}">@{{ post.postingProject.handle }}'s post:</a>
+    </h4>
+
+    {% for thread in comments %}
+    <div class="i-thread">
+        {{ comments::comment_tree(comment = thread) }}
+    </div>
+    {% endfor %}
+</div>
+
+{% endif %}
+{% endmacro %}

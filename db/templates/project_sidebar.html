@@ -1,0 +1,129 @@
+{% macro contact_card_item(item) %}
+<div class="i-contact-card-item">
+    <div class="i-service">{{ item.service }}</div>
+    {%- if item.value is matching("^https?://[\S]+$") -%}
+    <div class="i-value">
+        <a href="{{ item.value }}">{{ item.value | split(pat = "://") | nth(n = 1) }}</a>
+    </div>
+    {%- else -%}
+    <div class="i-value">{{ item.value }}</div>
+    {%- endif -%}
+</div>
+{% endmacro contact_card_item %}
+
+{% macro project_sidebar(project, description) %}
+{%- set class_name = '' -%}
+{%- if project.headerURL -%}
+    {% set class_name = 'has-header' %}
+{%- endif -%}
+<div class="project-sidebar {{ class_name }}">
+    <div class="i-details">
+        <div class="i-avatar-container co-drop-shadow">
+            <img
+                class="i-avatar co-avatar"
+                data-shape="{{ project.avatarShape }}"
+                src="{{ project.avatarURL }}"
+                alt="{{ project.handle }}"
+            />
+        </div>
+        <div class="i-details">
+            <h1 class="i-display-name">
+                <a href="/{{ project.handle }}">
+                    {{ project.displayName }}
+                </a>
+            </h1>
+            <div class="i-handle">
+                <a href="/{{ project.handle }}">
+                    @{{ project.handle }}
+                </a>
+            </div>
+            <div class="i-dek">
+                {{ project.dek }}
+            </div>
+        </div>
+    </div>
+    <ul class="i-fields">
+        {%- if project.pronouns -%}
+        <li class="i-field">
+            <svg class="i-icon" viewBox="0 0 24 24" height="16" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="i-value">{{ project.pronouns }}</span>
+        </li>
+        {%- endif -%}
+        {%- if project.url -%}
+        <li class="i-field">
+            <svg class="i-icon" viewBox="0 0 24 24" height="16" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M19.902 4.098a3.75 3.75 0 00-5.304 0l-4.5 4.5a3.75 3.75 0 001.035 6.037.75.75 0 01-.646 1.353 5.25 5.25 0 01-1.449-8.45l4.5-4.5a5.25 5.25 0 117.424 7.424l-1.757 1.757a.75.75 0 11-1.06-1.06l1.757-1.757a3.75 3.75 0 000-5.304zm-7.389 4.267a.75.75 0 011-.353 5.25 5.25 0 011.449 8.45l-4.5 4.5a5.25 5.25 0 11-7.424-7.424l1.757-1.757a.75.75 0 111.06 1.06l-1.757 1.757a3.75 3.75 0 105.304 5.304l4.5-4.5a3.75 3.75 0 00-1.035-6.037.75.75 0 01-.354-1z" clip-rule="evenodd"></path>
+            </svg>
+            <a class="i-value" href="{{ project.url }}" rel="me nofollow noopener" target="_blank">
+                {{ project.url | split(pat = "://") | nth(n = 1) }}
+            </a>
+        </li>
+        {%- endif -%}
+    </ul>
+    <div class="i-description prose-invert prose-stone prose-a:text-accent">
+        {{ description.html | safe }}
+    </div>
+
+    {%- if project.contactCard | length -%}
+    <hr class="i-contact-card-divider" />
+
+    {%- set has_private = false -%}
+    {%- for item in project.contactCard -%}
+    {%- if item.visibility != "follows" -%}
+    {{ project_sidebar::contact_card_item(item = item) }}
+    {%- else -%}
+    {%- set_global has_private = true -%}
+    {%- endif -%}
+    {%- endfor -%}
+
+    {%- if has_private -%}
+    <details class="i-private-contact-card">
+        <summary class="i-header">
+            <span class="i-label i-closed">
+                show private contact info
+            </span>
+            <span class="i-label i-open">
+                hide private contact info
+            </span>
+            <span class="i-icon">
+                <svg viewBox="0 0 24 24" height="24" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M12.53 16.28a.75.75 0 01-1.06 0l-7.5-7.5a.75.75 0 011.06-1.06L12 14.69l6.97-6.97a.75.75 0 111.06 1.06l-7.5 7.5z"></path>
+                </svg>
+            </span>
+        </summary>
+
+        {%- for item in project.contactCard -%}
+        {%- if item.visibility == "follows" -%}
+        {{ project_sidebar::contact_card_item(item = item) }}
+        {%- endif -%}
+        {%- endfor -%}
+    </details>
+    <hr class="i-contact-card-divider" />
+    {%- endif -%}
+    {%- endif -%}
+</div>
+{% endmacro project_sidebar %}
+
+{% macro project_sidebar_alt(project) %}
+<div class="project-sidebar-alt">
+    {% if project.frequentlyUsedTags | length %}
+    <div class="co-titled-box" role="group">
+        <div class="i-header">
+            Pinned Tags
+        </div>
+        <div class="i-contents">
+            <ul>
+                {% for tag in project.frequentlyUsedTags %}
+                <li>
+                    TODO
+                    {{ tag }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endmacro project_sidebar_alt %}

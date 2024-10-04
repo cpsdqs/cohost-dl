@@ -478,7 +478,7 @@ impl CohostContext {
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
-        comments.filter(post_id.eq(the_post_id as i32)).load(db)
+        comments.filter(post_id.eq(the_post_id as i32)).order_by(published_at).load(db)
     }
 
     pub async fn total_post_resources_count(&self) -> anyhow::Result<u64> {

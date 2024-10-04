@@ -3,30 +3,35 @@ use crate::context::CohostContext;
 use crate::data::DbDataError;
 use crate::post::{LimitedVisibilityReason, PostAstMap, PostFromCohost, PostState};
 use crate::project::ProjectFromCohost;
-use crate::render::{PostRenderRequest, PostRenderer};
+use crate::render::{MarkdownRenderRequest, MarkdownRenderer, PostRenderRequest};
 use crate::Config;
 use axum::body::Body;
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{response, Router};
 use chrono::Utc;
 use diesel::result::Error as DieselError;
 use diesel::SqliteConnection;
-use serde::Serialize;
+use reqwest::Url;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tera::{Context, Tera};
 use thiserror::Error;
+use tokio::fs;
 use tokio::sync::Mutex;
+use tokio_util::io::ReaderStream;
 
 struct ServerState {
     ctx: CohostContext,
     tera: Tera,
-    post_renderer: PostRenderer,
+    md_renderer: MarkdownRenderer,
 }
 
 type SharedServerState = Arc<ServerState>;
@@ -39,16 +44,24 @@ pub async fn serve(config: Config, db: SqliteConnection) {
         Mutex::new(db),
     );
 
-    let tera = Tera::new("templates/*").unwrap();
-    let post_renderer = PostRenderer::new(4);
+    let tera = match Tera::new("templates/*") {
+        Ok(tera) => tera,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+    let post_renderer = MarkdownRenderer::new(4);
 
     let routes = Router::new()
         .route("/:project/post/:post", get(get_single_post))
         .route("/api/post/:post", get(api_get_post))
+        .route("/resource", get(get_resource))
+        .route("/static/:file", get(get_static))
         .with_state(Arc::new(ServerState {
             ctx,
             tera,
-            post_renderer,
+            md_renderer: post_renderer,
         }));
 
     let bind_addr = format!("127.0.0.1:{}", config.server_port);
@@ -141,7 +154,9 @@ enum GetSinglePostError {
     Comments(GetDataError),
     #[error("error rendering post {0}: {1}")]
     Render(u64, anyhow::Error),
-    #[error(transparent)]
+    #[error("error rendering project: {0}")]
+    RenderProject(anyhow::Error),
+    #[error("{0:?}")]
     Unknown(anyhow::Error),
 }
 
@@ -152,6 +167,7 @@ impl GetSinglePostError {
             GetSinglePostError::PostNotFound => StatusCode::NOT_FOUND,
             GetSinglePostError::Comments(_) => StatusCode::INTERNAL_SERVER_ERROR,
             GetSinglePostError::Render(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            GetSinglePostError::RenderProject(..) => StatusCode::INTERNAL_SERVER_ERROR,
             GetSinglePostError::Unknown(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -193,7 +209,7 @@ async fn get_single_post_impl(
             .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
 
         let result = state
-            .post_renderer
+            .md_renderer
             .render_post(PostRenderRequest {
                 blocks: post.blocks.clone(),
                 published_at: post
@@ -211,10 +227,22 @@ async fn get_single_post_impl(
         rendered_posts.insert(post.post_id, result);
     }
 
+    let rendered_project_description = state
+        .md_renderer
+        .render_markdown(MarkdownRenderRequest {
+            markdown: post.posting_project.description.clone(),
+        })
+        .await
+        .map_err(|e| GetSinglePostError::RenderProject(e))?;
+
     let mut template_ctx = Context::new();
     template_ctx.insert("post", &post);
     template_ctx.insert("comments", &comments);
     template_ctx.insert("rendered_posts", &rendered_posts);
+    template_ctx.insert(
+        "rendered_project_description",
+        &rendered_project_description,
+    );
 
     let body = state
         .tera
@@ -421,7 +449,7 @@ async fn get_cohost_comments(
                 hidden: comment_data.hidden,
                 in_reply_to: comment.in_reply_to_id.clone(),
                 post_id,
-                posted_at_iso: "".to_string(),
+                posted_at_iso: comment.published_at,
             },
             can_edit: if is_viewer_comment {
                 CommentPermission::Allowed
@@ -464,4 +492,201 @@ async fn get_cohost_comments(
     }
 
     Ok(comments)
+}
+
+async fn get_static(
+    State(state): State<SharedServerState>,
+    Path(file_name): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let cdl_static_file = PathBuf::from("static").join(&file_name);
+    let cohost_static_file = state.ctx.root_dir.join("static").join(&file_name);
+
+    let (resolved_path, metadata) = match fs::metadata(&cdl_static_file).await {
+        Ok(m) => (cdl_static_file, m),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            match fs::metadata(&cohost_static_file).await {
+                Ok(m) => (cohost_static_file, m),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    return render_error_page(
+                        &state,
+                        StatusCode::NOT_FOUND,
+                        "file not found".into(),
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        "could not read file metadata for {}: {e}",
+                        cohost_static_file.display()
+                    );
+                    return render_error_page(
+                        &state,
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "could not read file metadata".into(),
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            error!(
+                "could not read file metadata for {}: {e}",
+                cdl_static_file.display()
+            );
+            return render_error_page(
+                &state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not read file metadata".into(),
+            );
+        }
+    };
+
+    serve_static(&state, resolved_path, metadata, &headers).await
+}
+
+#[derive(Deserialize)]
+struct GetResource {
+    url: String,
+}
+
+async fn get_resource(
+    State(state): State<SharedServerState>,
+    Query(query): Query<GetResource>,
+    headers: HeaderMap,
+) -> Response {
+    let url = match Url::parse(&query.url) {
+        Ok(url) => url,
+        Err(e) => {
+            return render_error_page(&state, StatusCode::BAD_REQUEST, format!("{e}"));
+        }
+    };
+
+    let url_file = match state.ctx.get_url_file(&url).await {
+        Ok(path) => path,
+        Err(e) => {
+            error!("failed to look up file: {e}");
+            return render_error_page(
+                &state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to look up file".into(),
+            );
+        }
+    };
+
+    let Some(url_file) = url_file else {
+        return render_error_page(
+            &state,
+            StatusCode::NOT_FOUND,
+            "no such downloaded file".into(),
+        );
+    };
+
+    let resolved_path = state.ctx.root_dir.join(url_file);
+    let metadata = match fs::metadata(&resolved_path).await {
+        Ok(m) => m,
+        Err(e) => {
+            error!(
+                "could not read file metadata for {}: {e}",
+                resolved_path.display()
+            );
+            return render_error_page(
+                &state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not read file metadata".into(),
+            );
+        }
+    };
+
+    serve_static(&state, resolved_path, metadata, &headers).await
+}
+
+async fn serve_static(
+    state: &ServerState,
+    resolved_path: PathBuf,
+    metadata: std::fs::Metadata,
+    headers: &HeaderMap,
+) -> Response {
+    let etag = if let Ok(mtime) = metadata.modified() {
+        let mut etag = Sha256::new();
+        etag.update(resolved_path.as_os_str().as_encoded_bytes());
+
+        if let Ok(dur) = mtime.duration_since(SystemTime::UNIX_EPOCH) {
+            etag.update(dur.as_nanos().to_le_bytes());
+        } else if let Ok(dur) = SystemTime::UNIX_EPOCH.duration_since(mtime) {
+            etag.update([0]);
+            etag.update(dur.as_nanos().to_le_bytes());
+        }
+
+        let etag = etag.finalize();
+        Some(hex::encode(etag))
+    } else {
+        None
+    };
+
+    if let (Some(etag), if_none_match) = (&etag, headers.get_all("if-none-match")) {
+        for cmp_etag in if_none_match {
+            if cmp_etag.to_str().map_or(false, |value| value == etag) {
+                return Response::builder()
+                    .status(StatusCode::NOT_MODIFIED)
+                    .body(Body::new(String::new()))
+                    .unwrap();
+            }
+        }
+    }
+
+    let file = match fs::File::open(&resolved_path).await {
+        Ok(f) => f,
+        Err(e) => {
+            error!("could not read file at {}: {e}", resolved_path.display());
+            return render_error_page(
+                &state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not read file".into(),
+            );
+        }
+    };
+
+    let mut response = Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from_stream(ReaderStream::new(file)))
+        .unwrap();
+
+    response.headers_mut().insert(
+        "content-length",
+        HeaderValue::from_str(&format!("{}", metadata.len())).unwrap(),
+    );
+
+    if let Some(etag) = etag {
+        response
+            .headers_mut()
+            .insert("etag", HeaderValue::from_str(&etag).unwrap());
+        response.headers_mut().insert(
+            "cache-control",
+            HeaderValue::from_str("max-age=3600, must-revalidate").unwrap(),
+        );
+    }
+
+    let file_ext = resolved_path.extension().map(|e| e.to_string_lossy());
+    let content_type = match file_ext.as_deref() {
+        Some("avif") => "image/avif",
+        Some("css") => "text/css; charset=utf-8",
+        Some("gif") => "image/gif",
+        Some("html") => "text/html; charset=utf-8",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("js") => "application/javascript; charset=utf-8",
+        Some("jxl") => "image/jxl",
+        Some("m4a") => "audio/mp4",
+        Some("mp3") => "audio/mp3",
+        Some("png") => "image/png",
+        Some("svg") => "image/svg+xml",
+        Some("wav") => "audio/wav",
+        Some("webp") => "image/webp",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    };
+    response
+        .headers_mut()
+        .insert("content-type", HeaderValue::from_str(content_type).unwrap());
+
+    response
 }

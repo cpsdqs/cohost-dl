@@ -1,0 +1,146 @@
+{% macro co_post_header(post, show_shared_from) %}
+{% set date_fmt_title = "%a, %b %-d, %Y, %-I:%M %p" %}
+{% set date_fmt_text = "%-m/%-d/%Y, %-I:%M %p" %}
+<div class="i-post-header">
+    <img
+        class="co-avatar i-avatar"
+        data-shape="{{ post.postingProject.avatarShape }}"
+        src="{{ post.postingProject.avatarURL }}"
+        alt="{{ post.postingProject.handle }}"
+    />
+
+    <a
+        class="co-project-display-name"
+        rel="author"
+        href="/{{ post.postingProject.handle }}"
+        title="{{ post.postingProject.displayName }}"
+    >
+        {{ post.postingProject.displayName }}
+    </a>
+
+    <a
+        class="co-project-handle"
+        href="/{{ post.postingProject.handle }}"
+    >
+        @{{ post.postingProject.handle }}
+    </a>
+
+    <time
+        class="i-timestamp"
+        datetime="{{ post.publishedAt }}"
+        title="{{ post.publishedAt | date(format = date_fmt_title) }}"
+    >
+        <a href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
+            {{ post.publishedAt | date(format = date_fmt_text) }}
+        </a>
+    </time>
+
+    {% set shared_from = post.shareTree | last %}
+    {% if show_shared_from and shared_from %}
+
+    <svg class="i-share-icon" viewBox="0 0 24 24" height="24" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.903h-3.183a.75.75 0 100 1.5h4.992a.75.75 0 00.75-.75V4.356a.75.75 0 00-1.5 0v3.18l-1.9-1.9A9 9 0 003.306 9.67a.75.75 0 101.45.388zm15.408 3.352a.75.75 0 00-.919.53 7.5 7.5 0 01-12.548 3.364l-1.902-1.903h3.183a.75.75 0 000-1.5H2.984a.75.75 0 00-.75.75v4.992a.75.75 0 001.5 0v-3.18l1.9 1.9a9 9 0 0015.059-4.035.75.75 0 00-.53-.918z" clip-rule="evenodd"></path>
+    </svg>
+
+    <img
+        class="co-avatar i-avatar"
+        data-shape="{{ shared_from.postingProject.avatarShape }}"
+        src="{{ shared_from.postingProject.avatarURL }}"
+        alt="{{ shared_from.postingProject.handle }}"
+    />
+
+    <a
+        class="co-project-display-name"
+        rel="author"
+        href="/{{ shared_from.postingProject.handle }}"
+        title="{{ shared_from.postingProject.displayName }}"
+    >
+        {{ shared_from.postingProject.displayName }}
+    </a>
+
+    <a
+        class="co-project-handle"
+        href="/{{ shared_from.postingProject.handle }}"
+    >
+        @{{ shared_from.postingProject.handle }}
+    </a>
+
+    {% endif %}
+</div>
+{% endmacro co_post_header %}
+
+{% macro co_post_contents(post) %}
+<div class="co-post-contents">
+    {% if post.headline %}
+    <div class="i-headline">
+        <a class="prose" href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
+            <h3>
+                {{ post.headline }}
+            </h3>
+        </a>
+    </div>
+    <div class="i-outer-contents">
+        <div class="i-contents prose">
+            {{ rendered_posts[post.postId].html | safe }}
+        </div>
+    </div>
+    {% if post.tags | length %}
+    <div class="i-tags">
+        {%- for tag in post.tags -%}
+        <a class="i-tag" href="/rc/tagged/{{ tag | urlencode_strict }}">
+            #{{tag}}
+        </a>
+        {%- endfor -%}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endmacro co_post_contents %}
+
+{% macro co_thread_item(post) %}
+<div class="co-thread-item" id="post-{{ post.postId }}">
+    <div class="i-header">
+        {{ post::co_post_header(post = post, show_shared_from = false) }}
+    </div>
+    {{ post::co_post_contents(post = post) }}
+</div>
+{% endmacro co_thread_item %}
+
+{% macro render(post) %}
+<article class="co-post-box">
+    <div class="co-thread-header">
+        {{ post::co_post_header(post = post, show_shared_from = true) }}
+        <div class="i-action-button-container"></div>
+    </div>
+
+    {% if post.shareTree | length %}
+    {% for post in post.shareTree %}
+    {% if post.transparentShareOfPostId %}
+    {% continue %}
+    {% endif %}
+    <hr class="co-hairline" />
+    {{ post::co_thread_item(post = post) }}
+    {% endfor %}
+    <hr class="co-hairline" />
+    {{ post::co_thread_item(post = post) }}
+    {% else %}
+    <hr class="co-hairline" />
+    <div id="post-{{ post.postId}}"></div>
+    {{ post::co_post_contents(post = post) }}
+    {% endif %}
+
+    <hr class="co-hairline" />
+
+    <div class="co-thread-footer">
+        <div class="i-comments">
+            <a href="/{{ post.postingProject.handle }}/post/{{ post.filename }}#comments">
+                {{ post.numComments }} comment{{ post.numComments | pluralize }}
+                {% if post.numSharedComments %}
+                + {{ post.numSharedComments }} on shared posts
+                {% endif %}
+            </a>
+        </div>
+    </div>
+</article>
+{% endmacro %}

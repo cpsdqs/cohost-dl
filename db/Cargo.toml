@@ -30,6 +30,7 @@ tempfile = "3.1"
 tera = "1.20"
 thiserror = "1.0"
 tokio = { version = "1.40", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.8"
 urlencoding = "2.1"
 
