@@ -429,6 +429,24 @@ impl CohostContext {
         Ok(res_items)
     }
 
+    pub async fn all_shares_of_post(&self, post_id: u64) -> QueryResult<Vec<u64>> {
+        use crate::schema::posts::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let items = posts
+            .filter(share_of_post_id.eq(post_id as i32))
+            .select(id)
+            .load_iter::<i32, _>(db)?;
+
+        let mut res_items = Vec::new();
+        for item in items {
+            res_items.push(item? as u64);
+        }
+        Ok(res_items)
+    }
+
     pub async fn get_post_tags(&self, the_post_id: u64) -> QueryResult<Vec<String>> {
         use crate::schema::post_tags::dsl::*;
 
@@ -478,7 +496,10 @@ impl CohostContext {
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
-        comments.filter(post_id.eq(the_post_id as i32)).order_by(published_at).load(db)
+        comments
+            .filter(post_id.eq(the_post_id as i32))
+            .order_by(published_at)
+            .load(db)
     }
 
     pub async fn total_post_resources_count(&self) -> anyhow::Result<u64> {

@@ -1,4 +1,4 @@
-use crate::context::{CohostContext, GetError};
+use crate::context::{CohostContext, GetError, MAX_RETRIES};
 use crate::trpc::LoginLoggedIn;
 use crate::Config;
 use anyhow::{bail, Context};
@@ -30,6 +30,8 @@ pub struct CurrentStateV1 {
     pub failed_urls: Vec<String>,
     #[serde(default)]
     pub tagged_posts: HashMap<String, TaggedPostsState>,
+    #[serde(default)]
+    pub comments_lost_to_time: HashSet<u64>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -367,6 +369,7 @@ async fn posts_without_comments(
                         .projects
                         .get(proj)
                         .map_or(true, |proj| !proj.has_comments.contains(post))
+                        && !state.comments_lost_to_time.contains(post)
                 })
                 .map(|(_, post)| post),
         );
@@ -386,14 +389,27 @@ async fn load_comments_for_posts(
     let progress = ProgressBar::new(posts.len() as u64);
     progress.set_style(long_progress_style());
 
-    // use reverse ID order because later shares might have comments for earlier posts, saving time
     posts.sort();
-    posts.reverse();
 
+    // share -> original post
+    let mut share_map: HashMap<u64, u64> = HashMap::new();
+    // original post -> shares
+    let mut rev_share_map: HashMap<u64, HashSet<u64>> = HashMap::new();
+
+    // use reverse ID order because later shares might have comments for earlier posts, saving time
     let mut count = 0;
-    for post in posts {
+    while let Some(post) = posts.pop() {
+        let for_post = share_map.get(&post).copied().unwrap_or(post);
+
+        let is_last = if let Some(items) = rev_share_map.get_mut(&for_post) {
+            items.remove(&post);
+            items.is_empty()
+        } else {
+            true
+        };
+
         progress.inc(1);
-        let (project_id, project_handle) = ctx.posting_project_handle(post).await?;
+        let (project_id, for_project_handle) = ctx.posting_project_handle(for_post).await?;
 
         let already_has_comments = state
             .lock()
@@ -402,22 +418,44 @@ async fn load_comments_for_posts(
             .entry(project_id)
             .or_default()
             .has_comments
-            .contains(&post);
+            .contains(&for_post);
 
         if already_has_comments {
-            trace!("skipping {post} because we already have comments, probably from a share");
+            trace!("skipping {post}/{for_post} because we already have comments, probably from a share");
             continue;
         }
 
-        progress.set_message(format!("{project_handle}/{post}"));
+        let (_, project_handle) = ctx.posting_project_handle(post).await?;
+
+        if for_post == post {
+            progress.set_message(format!("{project_handle}/{post}"));
+        } else {
+            progress.set_message(format!(
+                "{for_project_handle}/{for_post} from {project_handle}/{post}"
+            ));
+        }
 
         match ctx.posts_single_post(&project_handle, post).await {
             Ok(post) => {
                 ctx.insert_single_post(state, login, &post).await?;
                 count += 1;
             }
-            Err(GetError::NotFound(url, text)) => {
-                error!("could not load comments for {project_handle}/{post}: got not found for {url}: {text}");
+            Err(GetError::NotFound(..)) => {
+                let shares = ctx.all_shares_of_post(post).await?;
+
+                if shares.is_empty() {
+                    if is_last {
+                        state.lock().await.comments_lost_to_time.insert(for_post);
+                        error!("comments for {for_project_handle}/{for_post} are lost to time");
+                    }
+                } else {
+                    for share in shares {
+                        share_map.insert(share, for_post);
+                        rev_share_map.entry(for_post).or_default().insert(share);
+                        posts.push(share);
+                        progress.inc_length(1);
+                    }
+                }
             }
             Err(e) => Err(e)?,
         }
@@ -466,9 +504,29 @@ async fn par_load_resources<T: Send + Sync>(
             let loaded = Arc::clone(&loaded);
             s.spawn(async move {
                 let mut did_something = false;
-                let res = ctx
-                    .load_resource_to_file(&url, &state, Some(&mut did_something))
-                    .await;
+
+                let mut tries = 0;
+                let res = loop {
+                    tries += 1;
+
+                    let res = ctx
+                        .load_resource_to_file(&url, &state, Some(&mut did_something))
+                        .await;
+
+                    match res {
+                        Ok(res) => break Ok(res),
+                        Err(e) if e.is_recoverable() && tries < MAX_RETRIES => {
+                            let wait = 1.8_f64.powf(tries as f64) - 1.;
+                            info!(
+                                "try {} for {}: waiting for {wait:.02}s before continuing to be polite",
+                                tries + 1,
+                                url,
+                            );
+                            sleep(Duration::from_secs_f64(wait)).await;
+                        }
+                        Err(e) => break Err(e),
+                    }
+                };
 
                 match res {
                     Ok(Some(path)) => match ctx.insert_url_file(&url, &path).await {
@@ -479,14 +537,14 @@ async fn par_load_resources<T: Send + Sync>(
                         }
                         Err(e) => {
                             error!(
-                                "resource for {}: could not save URL mapping: {e:?}",
+                                "resource for {}: could not save URL mapping: {e}",
                                 error_id(item)
                             );
                         }
                     },
                     Ok(None) => (),
                     Err(e) => {
-                        error!("resource for {}: {e:?}", error_id(item));
+                        error!("resource for {}: {e}", error_id(item));
                     }
                 }
             });

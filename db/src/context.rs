@@ -1,5 +1,5 @@
 use crate::dl::CurrentStateV1;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, Context};
 use diesel::SqliteConnection;
 use reqwest::{Client, IntoUrl, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -43,11 +43,58 @@ pub enum GetError {
     OtherStatus(Url, StatusCode, String),
     #[error("GET {0}: {1}")]
     Req(Url, reqwest::Error),
-    #[error(transparent)]
+    #[error("{0:?}")]
     Other(anyhow::Error),
 }
 
-const MAX_RETRIES: usize = 10;
+#[derive(Debug, Error)]
+pub enum LoadResError {
+    #[error(transparent)]
+    Get(#[from] GetError),
+    #[error("{0:?}")]
+    Unknown(anyhow::Error),
+}
+
+impl GetError {
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            GetError::OtherStatus(
+                _,
+                StatusCode::UNAUTHORIZED
+                | StatusCode::FORBIDDEN
+                | StatusCode::METHOD_NOT_ALLOWED
+                | StatusCode::GONE,
+                _,
+            ) => false,
+            GetError::NotFound(..) => false,
+            GetError::Url(..) => false,
+            _ => true,
+        }
+    }
+}
+
+impl LoadResError {
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            LoadResError::Get(err) => err.is_recoverable(),
+            LoadResError::Unknown(_) => true,
+        }
+    }
+}
+
+impl From<diesel::result::Error> for LoadResError {
+    fn from(value: diesel::result::Error) -> Self {
+        Self::Unknown(value.into())
+    }
+}
+
+impl From<std::io::Error> for LoadResError {
+    fn from(value: std::io::Error) -> Self {
+        Self::Unknown(value.into())
+    }
+}
+
+pub const MAX_RETRIES: usize = 10;
 
 impl CohostContext {
     pub fn new(
@@ -223,16 +270,25 @@ impl CohostContext {
         }
     }
 
-    pub async fn get_file(&self, url: impl IntoUrl) -> anyhow::Result<reqwest::Response> {
-        let url = url.into_url()?;
+    pub async fn get_file(&self, url: impl IntoUrl) -> Result<reqwest::Response, GetError> {
+        let url = url.into_url().map_err(GetError::Url)?;
         trace!("GET {url}");
 
-        let res = self.client.get(url.clone()).send().await?;
+        let res = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .map_err(|e| GetError::Req(url.clone(), e))?;
 
-        if res.status().is_success() {
+        let status = res.status();
+        if status.is_success() {
             Ok(res)
         } else {
-            let err = res.text().await?;
+            let err = res
+                .text()
+                .await
+                .map_err(|e| GetError::Req(url.clone(), e))?;
 
             let mut err_slice_end = err.len().min(500);
             for i in 0..4 {
@@ -242,7 +298,12 @@ impl CohostContext {
                 }
             }
 
-            bail!("failed at GET {url}: {}", &err[..err_slice_end])
+            let err = &err[..err_slice_end];
+
+            match status {
+                StatusCode::NOT_FOUND => Err(GetError::NotFound(url, err.to_string())),
+                status => Err(GetError::OtherStatus(url, status, err.to_string())),
+            }
         }
     }
 
@@ -415,7 +476,7 @@ impl CohostContext {
         url: &Url,
         state: &Mutex<CurrentStateV1>,
         loaded: Option<&mut bool>,
-    ) -> anyhow::Result<Option<PathBuf>> {
+    ) -> Result<Option<PathBuf>, LoadResError> {
         if let Some(result) = self.get_url_file(&url).await? {
             return Ok(Some(result));
         }
@@ -424,7 +485,10 @@ impl CohostContext {
             return Ok(None);
         }
 
-        let Some(props) = self.props_for_resource_url(url)? else {
+        let Some(props) = self
+            .props_for_resource_url(url)
+            .map_err(|e| LoadResError::Unknown(e.into()))?
+        else {
             return Ok(None);
         };
 
@@ -432,7 +496,10 @@ impl CohostContext {
             && does_resource_probably_need_a_file_extension(&props.file_path);
 
         let file_path_with_ext = if needs_file_extension {
-            let content_type = self.get_res_content_type(&props.fetch).await?;
+            let content_type = self
+                .get_res_content_type(&props.fetch)
+                .await
+                .map_err(|e| LoadResError::Unknown(e.into()))?;
             Self::add_content_type_ext(
                 props.file_path.clone(),
                 &content_type.unwrap_or_default(),
@@ -445,7 +512,8 @@ impl CohostContext {
         if fs::exists(&file_path_with_ext)? {
             let result_file_path = file_path_with_ext
                 .strip_prefix(&self.root_dir)
-                .context("getting relative path")?
+                .context("getting relative path")
+                .map_err(|e| LoadResError::Unknown(e.into()))?
                 .to_path_buf();
 
             return Ok(Some(result_file_path));
@@ -454,10 +522,10 @@ impl CohostContext {
         let mut res = match self.get_file(url.clone()).await {
             Ok(file) => file,
             Err(e) => {
-                if props.can_fail {
+                if props.can_fail || !e.is_recoverable() {
                     state.lock().await.failed_urls.push(url.to_string());
                 }
-                Err(e).with_context(|| format!("loading resource at {url}"))?
+                Err(LoadResError::Get(e))?
             }
         };
 
@@ -467,10 +535,13 @@ impl CohostContext {
             .and_then(|value| value.to_str().ok().map(|s| s.to_string()))
         {
             self.insert_res_content_type(&props.fetch, &content_type)
-                .await?;
+                .await
+                .map_err(|e| LoadResError::Unknown(e.into()))?;
             content_type
         } else {
-            self.insert_res_content_type(&props.fetch, "").await?;
+            self.insert_res_content_type(&props.fetch, "")
+                .await
+                .map_err(|e| LoadResError::Unknown(e.into()))?;
             String::new()
         };
 
@@ -481,15 +552,21 @@ impl CohostContext {
         };
 
         let file = NamedTempFile::with_prefix_in("cohost-dl-res-", &self.temp_dir)
-            .context("creating temporary file")?;
+            .context("creating temporary file")
+            .map_err(|e| LoadResError::Unknown(e.into()))?;
 
-        while let Some(chunk) = res.chunk().await? {
+        while let Some(chunk) = res
+            .chunk()
+            .await
+            .map_err(|e| LoadResError::Unknown(e.into()))?
+        {
             file.as_file().write_all(&chunk)?;
         }
 
         let result_file_path = file_path_with_ext
             .strip_prefix(&self.root_dir)
-            .context("getting relative path")?
+            .context("getting relative path")
+            .map_err(|e| LoadResError::Unknown(e.into()))?
             .to_path_buf();
 
         let mut file_path_dir = file_path_with_ext.clone();
@@ -497,7 +574,8 @@ impl CohostContext {
         fs::create_dir_all(file_path_dir)?;
 
         file.persist(&file_path_with_ext)
-            .with_context(|| format!("moving resource to {}", file_path_with_ext.display()))?;
+            .with_context(|| format!("moving resource to {}", file_path_with_ext.display()))
+            .map_err(|e| LoadResError::Unknown(e.into()))?;
 
         if let Some(loaded) = loaded {
             *loaded = true;
