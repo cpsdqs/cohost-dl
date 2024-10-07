@@ -3,7 +3,10 @@ use crate::context::CohostContext;
 use crate::data::DbDataError;
 use crate::post::{LimitedVisibilityReason, PostAstMap, PostFromCohost, PostState};
 use crate::project::ProjectFromCohost;
-use crate::render::{MarkdownRenderRequest, MarkdownRenderer, PostRenderRequest};
+use crate::render::{
+    MarkdownRenderContext, MarkdownRenderRequest, MarkdownRenderResult, MarkdownRenderer,
+    PostRenderRequest,
+};
 use crate::Config;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -18,6 +21,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::convert::identity;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -156,6 +160,8 @@ enum GetSinglePostError {
     Render(u64, anyhow::Error),
     #[error("error rendering project: {0}")]
     RenderProject(anyhow::Error),
+    #[error("error rendering comment: {0}")]
+    RenderComment(anyhow::Error),
     #[error("{0:?}")]
     Unknown(anyhow::Error),
 }
@@ -168,6 +174,7 @@ impl GetSinglePostError {
             GetSinglePostError::Comments(_) => StatusCode::INTERNAL_SERVER_ERROR,
             GetSinglePostError::Render(..) => StatusCode::INTERNAL_SERVER_ERROR,
             GetSinglePostError::RenderProject(..) => StatusCode::INTERNAL_SERVER_ERROR,
+            GetSinglePostError::RenderComment(..) => StatusCode::INTERNAL_SERVER_ERROR,
             GetSinglePostError::Unknown(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -199,12 +206,49 @@ async fn get_single_post_impl(
         Err(err) => return Err(GetSinglePostError::Comments(err.into())),
     };
 
+    let mut rendered_comments = HashMap::new();
+
+    #[async_recursion::async_recursion]
+    async fn render_comment(
+        state: &ServerState,
+        comment: &CommentFromCohost,
+        comments: &mut HashMap<String, MarkdownRenderResult>,
+    ) -> Result<(), GetSinglePostError> {
+        let resources = state
+            .ctx
+            .get_resource_urls_for_comment(&comment.comment.comment_id)
+            .await
+            .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
+
+        let result = state
+            .md_renderer
+            .render_markdown(MarkdownRenderRequest {
+                markdown: comment.comment.body.clone(),
+                context: MarkdownRenderContext::Comment,
+                published_at: comment.comment.posted_at_iso.clone(),
+                has_cohost_plus: comment.comment.has_cohost_plus,
+                resources,
+            })
+            .await
+            .map_err(|e| GetSinglePostError::RenderComment(e))?;
+
+        comments.insert(comment.comment.comment_id.clone(), result);
+
+        for child in &comment.comment.children {
+            render_comment(state, child, comments).await?;
+        }
+        Ok(())
+    }
+    for comment in comments.values().flat_map(identity) {
+        render_comment(state, comment, &mut rendered_comments).await?;
+    }
+
     let mut rendered_posts = HashMap::new();
 
     for post in std::iter::once(&post).chain(post.share_tree.iter()) {
         let resources = state
             .ctx
-            .get_resource_files_for_post(post.post_id)
+            .get_resource_urls_for_post(post.post_id)
             .await
             .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
 
@@ -217,20 +261,30 @@ async fn get_single_post_impl(
                     .clone()
                     .unwrap_or_else(|| Utc::now().to_rfc3339()),
                 has_cohost_plus: post.has_cohost_plus,
-                disable_embeds: true,
-                external_links_in_new_tab: true,
                 resources,
             })
             .await
             .map_err(|e| GetSinglePostError::Render(post.post_id, e))?;
 
+        println!("{result:?} {:?}", post.post_id);
+
         rendered_posts.insert(post.post_id, result);
     }
+
+    let resources = state
+        .ctx
+        .get_resource_urls_for_project(post.posting_project.project_id)
+        .await
+        .map_err(|e| GetSinglePostError::Unknown(e.into()))?;
 
     let rendered_project_description = state
         .md_renderer
         .render_markdown(MarkdownRenderRequest {
             markdown: post.posting_project.description.clone(),
+            published_at: Utc::now().to_rfc3339(),
+            context: MarkdownRenderContext::Profile,
+            has_cohost_plus: false,
+            resources,
         })
         .await
         .map_err(|e| GetSinglePostError::RenderProject(e))?;
@@ -238,6 +292,7 @@ async fn get_single_post_impl(
     let mut template_ctx = Context::new();
     template_ctx.insert("post", &post);
     template_ctx.insert("comments", &comments);
+    template_ctx.insert("rendered_comments", &rendered_comments);
     template_ctx.insert("rendered_posts", &rendered_posts);
     template_ctx.insert(
         "rendered_project_description",

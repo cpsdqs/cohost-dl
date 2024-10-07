@@ -43,18 +43,22 @@ const PLUS_EMOJI = {
     "host-stare.png": "a09d966cd188c9ebaa4c.png",
 };
 
+function convertEmoji(map) {
+    return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, `/static/${v}`]));
+}
+
 const banner = `
 process.env.HOME_URL = 'https://cohost.org/';
 
 globalThis.require = {};
 require.context = (dir, useSubdirs) => {
     if ((dir === "../../images/emoji" || dir === "../images/emoji") && !useSubdirs) {
-        const data = ${JSON.stringify(EMOJI)};
+        const data = ${JSON.stringify(convertEmoji(EMOJI))};
         const f = (n) => data[n];
         f.keys = () => Object.keys(data);
         return f;
     } else if ((dir === "../../images/plus-emoji" || dir === "../images/plus-emoji") && !useSubdirs) {
-        const data = ${JSON.stringify(PLUS_EMOJI)};
+        const data = ${JSON.stringify(convertEmoji(PLUS_EMOJI))};
         const f = (n) => data[n];
         f.keys = () => Object.keys(data);
         return f;

@@ -71,7 +71,7 @@
 
 {% macro co_post_contents(post) %}
 <div class="co-post-contents">
-    {% if post.headline %}
+    {%- if post.headline %}
     <div class="i-headline">
         <a class="prose" href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
             <h3>
@@ -79,12 +79,9 @@
             </h3>
         </a>
     </div>
-    <div class="i-outer-contents">
-        <div class="i-contents prose">
-            {{ rendered_posts[post.postId].full | safe }}
-        </div>
-    </div>
-    {% if post.tags | length %}
+    {% endif -%}
+    {{ rendered_posts[post.postId].full | safe }}
+    {%- if post.tags | length -%}
     <div class="i-tags">
         {%- for tag in post.tags -%}
         <a class="i-tag" href="/rc/tagged/{{ tag | urlencode_strict }}">
@@ -92,10 +89,8 @@
         </a>
         {%- endfor -%}
     </div>
-    {% endif %}
+    {%- endif -%}
 </div>
-{% endif %}
-
 {% endmacro co_post_contents %}
 
 {% macro co_thread_item(post) %}
@@ -122,8 +117,10 @@
     <hr class="co-hairline" />
     {{ post::co_thread_item(post = post) }}
     {% endfor %}
+    {% if not post.transparentShareOfPostId %}
     <hr class="co-hairline" />
     {{ post::co_thread_item(post = post) }}
+    {% endif %}
     {% else %}
     <hr class="co-hairline" />
     <div id="post-{{ post.postId}}"></div>

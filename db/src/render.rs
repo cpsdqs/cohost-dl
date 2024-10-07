@@ -16,9 +16,7 @@ pub struct PostRenderRequest {
     pub blocks: Vec<PostBlock>,
     pub published_at: String,
     pub has_cohost_plus: bool,
-    pub disable_embeds: bool,
-    pub external_links_in_new_tab: bool,
-    pub resources: HashMap<String, PathBuf>,
+    pub resources: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,6 +29,17 @@ pub struct PostRenderResult {
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownRenderRequest {
     pub markdown: String,
+    pub published_at: String,
+    pub context: MarkdownRenderContext,
+    pub has_cohost_plus: bool,
+    pub resources: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkdownRenderContext {
+    Profile,
+    Comment,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

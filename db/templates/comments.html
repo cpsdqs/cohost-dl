@@ -49,8 +49,7 @@
             </time>
         </div>
         <div class="i-contents prose">
-            {{ comment.comment.body }}
-            TODO: render
+            {{ rendered_comments[comment.comment.commentId].html | safe }}
         </div>
     </div>
 </article>

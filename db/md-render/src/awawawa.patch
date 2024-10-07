@@ -31,7 +31,7 @@ index f6387f9..36c3c59 100644
  import { chooseAgeRuleset } from "./sanitize";
  import { MAX_GFM_LINES, RenderingOptions } from "./shared-types";
 diff --git a/lib/markdown/post-rendering.tsx b/lib/markdown/post-rendering.tsx
-index d222af9..2090941 100644
+index d222af9..dc8f657 100644
 --- a/lib/markdown/post-rendering.tsx
 +++ b/lib/markdown/post-rendering.tsx
 @@ -1,13 +1,13 @@
@@ -287,7 +287,7 @@ index 90a3017..dd4365d 100644
          let embedBody = undefined;
  
 diff --git a/preact/components/posts/post-body.tsx b/preact/components/posts/post-body.tsx
-index fb65957..964751a 100644
+index fb65957..809886f 100644
 --- a/preact/components/posts/post-body.tsx
 +++ b/preact/components/posts/post-body.tsx
 @@ -1,6 +1,6 @@
@@ -333,6 +333,26 @@ index f728487..12eca3f 100644
  
      return result.data ?? DisplayPrefs.parse({});
  };
+diff --git a/preact/hooks/use-image-optimizer.ts b/preact/hooks/use-image-optimizer.ts
+index ec3359f..6a5797d 100644
+--- a/preact/hooks/use-image-optimizer.ts
++++ b/preact/hooks/use-image-optimizer.ts
+@@ -7,6 +7,7 @@ export const useImageOptimizer = (
+ ) => {
+     const processedSrc = useMemo(() => {
+         if (!src) return undefined;
++        return src;
+ 
+         const parsedSrc = new URL(src);
+ 
+@@ -34,6 +35,7 @@ export const useImageOptimizer = (
+     const srcWithDpr = useCallback(
+         (dpr: number) => {
+             if (!processedSrc) return "";
++            return processedSrc;
+             const parsedSrc = new URL(processedSrc.toString());
+ 
+             if (parsedSrc.protocol === "blob:") {
 diff --git a/preact/providers/site-config-provider.ts b/preact/providers/site-config-provider.ts
 index 2b1ea42..10cfcf5 100644
 --- a/preact/providers/site-config-provider.ts

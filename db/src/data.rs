@@ -1010,33 +1010,40 @@ impl CohostContext {
         Ok(())
     }
 
-    pub async fn get_resource_files_for_post(
-        &self,
-        post: u64,
-    ) -> QueryResult<HashMap<String, PathBuf>> {
+    pub async fn get_resource_urls_for_post(&self, post: u64) -> QueryResult<Vec<String>> {
         use crate::schema::post_resources::dsl as res;
-        use crate::schema::url_files::dsl as files;
 
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
-        let items = files::url_files
-            .inner_join(res::post_resources.on(files::url.eq(res::url)))
+        res::post_resources
             .filter(res::post_id.eq(post as i32))
-            .select((files::url, files::file_path))
-            .load_iter::<(String, Vec<u8>), _>(db)?;
+            .select(res::url)
+            .load(db)
+    }
 
-        let mut res_items = HashMap::new();
-        for res in items {
-            let (url, path) = res?;
-            res_items.insert(
-                url,
-                // SAFETY: well, we stored it that way
-                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
-            );
-        }
+    pub async fn get_resource_urls_for_project(&self, project: u64) -> QueryResult<Vec<String>> {
+        use crate::schema::project_resources::dsl as res;
 
-        Ok(res_items)
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        res::project_resources
+            .filter(res::project_id.eq(project as i32))
+            .select(res::url)
+            .load(db)
+    }
+
+    pub async fn get_resource_urls_for_comment(&self, comment: &str) -> QueryResult<Vec<String>> {
+        use crate::schema::comment_resources::dsl as res;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        res::comment_resources
+            .filter(res::comment_id.eq(comment))
+            .select(res::url)
+            .load(db)
     }
 
     pub async fn total_url_file_count(&self) -> QueryResult<u64> {
