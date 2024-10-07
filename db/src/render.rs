@@ -1,15 +1,12 @@
 use crate::post::PostBlock;
 use deno_core::_ops::RustToV8;
 use deno_core::url::Url;
-use deno_core::{
-    ascii_str, serde_v8, v8, v8_set_flags, JsRuntime, RuntimeOptions, StaticModuleLoader,
-};
+use deno_core::{ascii_str, serde_v8, v8, JsRuntime, RuntimeOptions};
 use deno_web::TimersPermission;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::oneshot;
 
@@ -158,13 +155,6 @@ impl TimersPermission for AllowHrTime {
 
 impl ThreadMarkdownRenderer {
     fn new() -> Self {
-        let ignored = v8_set_flags(vec![
-            String::new(),
-            "--stack_trace_limit=256".into(),
-            "--no-async-stack-traces".into(),
-        ]);
-        assert_eq!(ignored, vec![String::new()]);
-
         let mut rt = JsRuntime::new(RuntimeOptions {
             extensions: vec![
                 deno_webidl::deno_webidl::init_ops_and_esm(),

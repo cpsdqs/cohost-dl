@@ -930,7 +930,8 @@ impl CohostContext {
     ) -> QueryResult<()> {
         use crate::schema::related_tags::dsl;
 
-        let (tag1, tag2) = if tag1 < tag2 {
+        // table has `collate nocase`. I think it's ASCII-only
+        let (tag1, tag2) = if tag1.to_ascii_lowercase() < tag2.to_ascii_lowercase() {
             (tag1, tag2)
         } else {
             (tag2, tag1)
