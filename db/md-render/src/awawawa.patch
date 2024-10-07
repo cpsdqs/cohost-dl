@@ -1,0 +1,356 @@
+diff --git a/lib/emoji.ts b/lib/emoji.ts
+index 84206ea..a9f851a 100644
+--- a/lib/emoji.ts
++++ b/lib/emoji.ts
+@@ -1,4 +1,4 @@
+-import sitemap from "@/shared/sitemap";
++import sitemap from "../shared/sitemap";
+ import path from "path";
+ import { SKIP } from "unist-util-visit";
+ import { processMatches } from "./markdown/unified-processors";
+diff --git a/lib/markdown/other-rendering.ts b/lib/markdown/other-rendering.ts
+index f6387f9..36c3c59 100644
+--- a/lib/markdown/other-rendering.ts
++++ b/lib/markdown/other-rendering.ts
+@@ -3,7 +3,7 @@
+  * isn't a post.
+  */
+ 
+-import { CustomEmoji } from "@/client/preact/components/posts/blocks/custom-emoji";
++import { CustomEmoji } from "../../preact/components/posts/blocks/custom-emoji";
+ import { compile } from "html-to-text";
+ import { createElement, Fragment } from "react";
+ import rehypeExternalLinks from "rehype-external-links";
+@@ -14,7 +14,7 @@ import remarkGfm from "remark-gfm";
+ import remarkParse from "remark-parse";
+ import remarkRehype from "remark-rehype";
+ import { unified } from "unified";
+-import { Mention } from "@/client/preact/components/posts/blocks/mention";
++import { Mention } from "../../preact/components/posts/blocks/mention";
+ import { parseEmoji } from "../emoji";
+ import { chooseAgeRuleset } from "./sanitize";
+ import { MAX_GFM_LINES, RenderingOptions } from "./shared-types";
+diff --git a/lib/markdown/post-rendering.tsx b/lib/markdown/post-rendering.tsx
+index d222af9..2090941 100644
+--- a/lib/markdown/post-rendering.tsx
++++ b/lib/markdown/post-rendering.tsx
+@@ -1,13 +1,13 @@
+-import { InfoBox } from "@/client/preact/components/elements/info-box";
+-import { CustomEmoji } from "@/client/preact/components/posts/blocks/custom-emoji";
++import { InfoBox } from "../../preact/components/elements/info-box";
++import { CustomEmoji } from "../../preact/components/posts/blocks/custom-emoji";
+ import {
+     isAskViewBlock,
+     isMarkdownViewBlock,
+     MarkdownViewBlock,
+     summaryContent,
+     ViewBlock,
+-} from "@/shared/types/post-blocks";
+-import { PostASTMap, WirePostViewModel } from "@/shared/types/wire-models";
++} from "../../shared/types/post-blocks";
++import { PostASTMap, WirePostViewModel } from "../../shared/types/wire-models";
+ import { compile } from "html-to-text";
+ import i18n from "i18next";
+ import { DateTime } from "luxon";
+@@ -23,8 +23,8 @@ import remarkGfm from "remark-gfm";
+ import remarkParse from "remark-parse";
+ import remarkRehype from "remark-rehype";
+ import { unified } from "unified";
+-import { IframelyEmbed } from "@/client/preact/components/posts/iframely";
+-import { Mention } from "@/client/preact/components/posts/blocks/mention";
++import { IframelyEmbed } from "../../preact/components/posts/iframely";
++import { Mention } from "../../preact/components/posts/blocks/mention";
+ import { parseEmoji } from "../emoji";
+ import { chooseAgeRuleset } from "./sanitize";
+ import { MAX_GFM_LINES, RenderingOptions } from "./shared-types";
+@@ -100,7 +100,8 @@ const ERROR_BOX_HTML = renderToStaticMarkup(ERROR_BOX_NODE);
+ async function renderMarkdownAst(
+     blocks: MarkdownViewBlock[],
+     publishDate: Date,
+-    options: Pick<RenderingOptions, "hasCohostPlus" | "renderingContext">
++    options: Pick<RenderingOptions, "hasCohostPlus" | "renderingContext">,
++    isErrorHandler = false,
+ ): Promise<string> {
+     const src = blocks.map((block) => block.markdown.content).join("\n\n");
+     let lineLength = 0;
+@@ -129,6 +130,7 @@ async function renderMarkdownAst(
+         .process(src)
+         .then((result) => result.value.toString())
+         .catch((e) => {
++            if (isErrorHandler) throw e; // error box is not Known Good anymore
+             // re-run the renderer with our static error box. we only get errors
+             // when a user has an invalid style tag that fails parsing. our error
+             // box is Known Good so this is not a concern for us.
+@@ -142,7 +144,8 @@ async function renderMarkdownAst(
+                     },
+                 ],
+                 publishDate,
+-                options
++                options,
++                true,
+             );
+         });
+ }
+diff --git a/lib/server-path-from-import.ts b/lib/server-path-from-import.ts
+index 9a6628b..edf24d4 100644
+--- a/lib/server-path-from-import.ts
++++ b/lib/server-path-from-import.ts
+@@ -1,4 +1,4 @@
+-import sitemap from "@/shared/sitemap";
++import sitemap from "../shared/sitemap";
+ 
+ export function serverPathFromImport(path: string) {
+     return sitemap.public.static.staticAsset({ path }).toString();
+diff --git a/preact/components/elements/info-box.tsx b/preact/components/elements/info-box.tsx
+index 7957cab..4463485 100644
+--- a/preact/components/elements/info-box.tsx
++++ b/preact/components/elements/info-box.tsx
+@@ -1,4 +1,4 @@
+-import { tw } from "@/client/lib/tw-tagged-literal";
++import { tw } from "../../../lib/tw-tagged-literal";
+ import {
+     CheckCircleIcon,
+     ExclamationTriangleIcon,
+diff --git a/preact/components/lightbox.tsx b/preact/components/lightbox.tsx
+index a6be975..d35e472 100644
+--- a/preact/components/lightbox.tsx
++++ b/preact/components/lightbox.tsx
+@@ -1,6 +1,5 @@
+-import missingImage from "@/client/images/placeholders/attach_padding.svg";
+-import { AttachmentId, PostId } from "@/shared/types/ids";
+-import { AttachmentViewBlock } from "@/shared/types/post-blocks";
++import { AttachmentId, PostId } from "../../shared/types/ids";
++import { AttachmentViewBlock } from "../../shared/types/post-blocks";
+ import { Dialog } from "@headlessui/react";
+ import { ChevronRightIcon } from "@heroicons/react/24/solid";
+ import classNames from "classnames";
+@@ -17,6 +16,8 @@ import { IconEgg } from "./icons/text-egg";
+ import { ModalOverlay } from "./util";
+ import { noop } from "lodash";
+ 
++const missingImage = "/static/edcc39b1702e4bd4b95e.svg";
++
+ export type LightboxImage = {
+     src: string;
+     alt?: string;
+diff --git a/preact/components/loading.tsx b/preact/components/loading.tsx
+index 3aa44a8..cfceeb8 100644
+--- a/preact/components/loading.tsx
++++ b/preact/components/loading.tsx
+@@ -1,5 +1,5 @@
+ import React, { FunctionComponent } from "react";
+-import sitemap from "@/shared/sitemap";
++import sitemap from "../../shared/sitemap";
+ import path from "path";
+ import _ from "lodash";
+ 
+diff --git a/preact/components/partials/project-avatar.tsx b/preact/components/partials/project-avatar.tsx
+index b056762..fac7fee 100644
+--- a/preact/components/partials/project-avatar.tsx
++++ b/preact/components/partials/project-avatar.tsx
+@@ -1,9 +1,9 @@
+-import { sitemap } from "@/shared/sitemap";
++import { sitemap } from "../../../shared/sitemap";
+ import {
+     AvatarShape,
+     ProjectPrivacy,
+     WireProjectModel,
+-} from "@/shared/types/projects";
++} from "../../../shared/types/projects";
+ import { LockClosedIcon } from "@heroicons/react/24/solid";
+ import React, { FunctionComponent, useMemo } from "react";
+ import { z } from "zod";
+diff --git a/preact/components/posts/blocks/ask.tsx b/preact/components/posts/blocks/ask.tsx
+index 52e3245..baaf3ea 100644
+--- a/preact/components/posts/blocks/ask.tsx
++++ b/preact/components/posts/blocks/ask.tsx
+@@ -1,11 +1,12 @@
+-import anonBug from "@/client/images/anonbug.png";
+-import { renderMarkdownReactNoHTML } from "@/client/lib/markdown/other-rendering";
+-import { tw } from "@/client/lib/tw-tagged-literal";
+-import sitemap from "@/shared/sitemap";
+-import { AskViewBlock } from "@/shared/types/post-blocks";
++import { renderMarkdownReactNoHTML } from "../../../../lib/markdown/other-rendering";
++import { tw } from "../../../../lib/tw-tagged-literal";
++import sitemap from "../../../../shared/sitemap";
++import { AskViewBlock } from "../../../../shared/types/post-blocks";
+ import React, { FunctionComponent, useMemo } from "react";
+-import { useDisplayPrefs } from "@/client/preact/hooks/use-display-prefs";
+-import { ProjectAvatar } from "@/client/preact/components/partials/project-avatar";
++import { useDisplayPrefs } from "../../../hooks/use-display-prefs";
++import { ProjectAvatar } from "../../partials/project-avatar";
++
++const anonBug = "/static/ca4719f7af550ea00632.png";
+ 
+ export const Ask: FunctionComponent<{
+     askBlock: AskViewBlock;
+diff --git a/preact/components/posts/blocks/attachments/audio.tsx b/preact/components/posts/blocks/attachments/audio.tsx
+index 1ab442f..8aa0c8f 100644
+--- a/preact/components/posts/blocks/attachments/audio.tsx
++++ b/preact/components/posts/blocks/attachments/audio.tsx
+@@ -1,9 +1,9 @@
+-import { useAudioPlayback } from "@/client/preact/hooks/use-audio-playback";
+-import { AttachmentViewBlock } from "@/shared/types/post-blocks";
++import { useAudioPlayback } from "../../../../hooks/use-audio-playback";
++import { AttachmentViewBlock } from "../../../../../shared/types/post-blocks";
+ import { CloudArrowDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
+ import React, { useMemo, useRef, useState } from "react";
+-import { AudioPlayPauseButton } from "@/client/preact/components/elements/audio-play-pause";
+-import { AudioSeekBar } from "@/client/preact/components/elements/audio-seek-bar";
++import { AudioPlayPauseButton } from "../../../elements/audio-play-pause";
++import { AudioSeekBar } from "../../../elements/audio-seek-bar";
+ import { BlockComponent } from "../attachment";
+ 
+ export const AudioAttachment: BlockComponent<AttachmentViewBlock> = ({
+diff --git a/preact/components/posts/blocks/attachments/image.tsx b/preact/components/posts/blocks/attachments/image.tsx
+index b486d22..1686b3c 100644
+--- a/preact/components/posts/blocks/attachments/image.tsx
++++ b/preact/components/posts/blocks/attachments/image.tsx
+@@ -5,11 +5,11 @@ import React, {
+     useRef,
+     useState,
+ } from "react";
+-import { useDisplayPrefs } from "@/client/preact/hooks/use-display-prefs";
+-import { PlayPauseButton } from "@/client/preact/components/elements/play-pause-button";
++import { useDisplayPrefs } from "../../../../hooks/use-display-prefs";
++import { PlayPauseButton } from "../../../elements/play-pause-button";
+ import { BlockComponent } from "../attachment";
+-import { AttachmentViewBlock } from "@/shared/types/post-blocks";
+-import { useImageOptimizer } from "@/client/preact/hooks/use-image-optimizer";
++import { AttachmentViewBlock } from "../../../../../shared/types/post-blocks";
++import { useImageOptimizer } from "../../../../hooks/use-image-optimizer";
+ 
+ export const ImageAttachment: BlockComponent<AttachmentViewBlock> = ({
+     block,
+diff --git a/preact/components/posts/blocks/custom-emoji.tsx b/preact/components/posts/blocks/custom-emoji.tsx
+index 25dbbcb..3507a42 100644
+--- a/preact/components/posts/blocks/custom-emoji.tsx
++++ b/preact/components/posts/blocks/custom-emoji.tsx
+@@ -1,7 +1,7 @@
+ import React, { FunctionComponent } from "react";
+ 
+-import brokenImage from "@/client/images/placeholders/attach.svg";
+-import sitemap from "@/shared/sitemap";
++const brokenImage = "/static/edcc39b1702e4bd4b95e.svg";
++import sitemap from "../../../../shared/sitemap";
+ export const CustomEmoji: FunctionComponent<{
+     name: string;
+     url: string;
+diff --git a/preact/components/posts/blocks/mention.tsx b/preact/components/posts/blocks/mention.tsx
+index 28d120a..cc5f8bf 100644
+--- a/preact/components/posts/blocks/mention.tsx
++++ b/preact/components/posts/blocks/mention.tsx
+@@ -1,5 +1,5 @@
+-import sitemap from "@/shared/sitemap";
+-import { ProjectHandle } from "@/shared/types/ids";
++import sitemap from "../../../../shared/sitemap";
++import { ProjectHandle } from "../../../../shared/types/ids";
+ import React, { FunctionComponent } from "react";
+ 
+ export const Mention: FunctionComponent<{ handle: ProjectHandle }> = ({
+diff --git a/preact/components/posts/iframely.tsx b/preact/components/posts/iframely.tsx
+index 90a3017..dd4365d 100644
+--- a/preact/components/posts/iframely.tsx
++++ b/preact/components/posts/iframely.tsx
+@@ -1,11 +1,12 @@
+-import thinkbug from "@/client/images/thinkbug.png";
+-import { serverPathFromImport } from "@/client/lib/server-path-from-import";
+-import { tw } from "@/client/lib/tw-tagged-literal";
++import { serverPathFromImport } from "../../../lib/server-path-from-import";
++import { tw } from "../../../lib/tw-tagged-literal";
+ import { useQuery } from "@tanstack/react-query";
+ import React, { FunctionComponent, useEffect } from "react";
+ import RenderIfVisible from "react-render-if-visible";
+ import { useSiteConfig } from "../../providers/site-config-provider";
+ 
++const thinkbug = "/static/4fd0f5fb276c23f89e61.png";
++
+ export type IframelyEmbedProps = {
+     url: string;
+ };
+@@ -30,6 +31,7 @@ export const IframelyEmbed: FunctionComponent<IframelyEmbedProps> = React.memo(
+             window.iframely && window.iframely.load();
+         });
+ 
++        /*
+         const { data, status } = useQuery<IframelyResponse>(
+             ["iframely", props.url],
+             ({ queryKey }) =>
+@@ -44,6 +46,9 @@ export const IframelyEmbed: FunctionComponent<IframelyEmbedProps> = React.memo(
+                 retry: false, // pretty much all error states are an issue with the URL or our account. no reason to retry
+             }
+         );
++         */
++        const data = {};
++        const status = 'loading';
+ 
+         let embedBody = undefined;
+ 
+diff --git a/preact/components/posts/post-body.tsx b/preact/components/posts/post-body.tsx
+index fb65957..964751a 100644
+--- a/preact/components/posts/post-body.tsx
++++ b/preact/components/posts/post-body.tsx
+@@ -1,6 +1,6 @@
+-import { renderReactFromAst } from "@/client/lib/markdown/post-rendering";
+-import { chooseAgeRuleset } from "@/client/lib/markdown/sanitize";
+-import { tw } from "@/client/lib/tw-tagged-literal";
++import { renderReactFromAst } from "../../../lib/markdown/post-rendering";
++import { chooseAgeRuleset } from "../../../lib/markdown/sanitize";
++import { tw } from "../../../lib/tw-tagged-literal";
+ import {
+     AttachmentViewBlock,
+     ViewBlock,
+@@ -8,8 +8,8 @@ import {
+     isAttachmentRowViewBlock,
+     isAttachmentViewBlock,
+     isMarkdownViewBlock,
+-} from "@/shared/types/post-blocks";
+-import { WirePostViewModel } from "@/shared/types/wire-models";
++} from "../../../shared/types/post-blocks";
++import { WirePostViewModel } from "../../../shared/types/wire-models";
+ import _ from "lodash";
+ import {
+     FunctionComponent,
+diff --git a/preact/hooks/use-display-prefs.ts b/preact/hooks/use-display-prefs.ts
+index f728487..12eca3f 100644
+--- a/preact/hooks/use-display-prefs.ts
++++ b/preact/hooks/use-display-prefs.ts
+@@ -1,12 +1,13 @@
+-import { trpc } from "@/client/lib/trpc";
+-import { DisplayPrefs } from "@/shared/types/display-prefs";
++// import { trpc } from "../../lib/trpc";
++import { DisplayPrefs } from "../../shared/types/display-prefs";
+ 
+ export const useDisplayPrefs = () => {
+-    const result = trpc.users.displayPrefs.useQuery(undefined, {
++    /* const result = trpc.users.displayPrefs.useQuery(undefined, {
+         suspense: true,
+         keepPreviousData: true,
+         notifyOnChangeProps: ["data", "error"],
+-    });
++    }); */
++    const result = {};
+ 
+     return result.data ?? DisplayPrefs.parse({});
+ };
+diff --git a/preact/providers/site-config-provider.ts b/preact/providers/site-config-provider.ts
+index 2b1ea42..10cfcf5 100644
+--- a/preact/providers/site-config-provider.ts
++++ b/preact/providers/site-config-provider.ts
+@@ -1,5 +1,5 @@
+ import { createContext, useContext } from "react";
+-import { SiteConfigType, defaultConfig } from "@/shared/util/site-config";
++import { SiteConfigType, defaultConfig } from "../../shared/util/site-config";
+ 
+ export const SiteConfigProvider = createContext<SiteConfigType>(defaultConfig);
+ 
+diff --git a/shared/types/ids.ts b/shared/types/ids.ts
+index b9cee3b..6ad7514 100644
+--- a/shared/types/ids.ts
++++ b/shared/types/ids.ts
+@@ -1,4 +1,4 @@
+-import { EXTANT_PAGE_LEGAL_REGEX } from "@/shared/username-verifier";
++import { EXTANT_PAGE_LEGAL_REGEX } from "../username-verifier";
+ import { DateTime } from "luxon";
+ import z from "zod";
+ import { Tagged, refinement } from "./tagged";

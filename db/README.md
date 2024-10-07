@@ -15,3 +15,20 @@ Files:
 - the database: stores all post data
 - the output directory: stores all resources like images
 - downloader-state.json: file to remember what’s already been downloaded before and skip downloading those things (can be edited)
+
+## WIP Usage
+Beware: this is super not finished. Downloading works; looking at posts, not really
+
+1. compile the post & markdown renderer. this is super jank. it currently requires running cohost-dl 1 as well
+    - if ASSC ever ships an open source post renderer, this will be replaced with that
+    - if you don’t care about serve mode, just make an empty `md-render/compiled.js` file so the Rust code compiles
+    - in repo root:
+    - `rm out/staff/post/7611443-cohost-to-shut-down` (if it exists)
+        - why? because this post is used to determine the current Cohost version
+    - `./run.sh`
+      - wait for it to download Cohost version `a2ecdc59`
+      - if this is no longer the current Cohost version, then the following build script will need an update
+    - `cd db/md-render`
+    - `./build.sh`
+2. `cargo run -- download`
+3. `cargo run -- serve` (can be run in parallel)

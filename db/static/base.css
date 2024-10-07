@@ -1458,6 +1458,10 @@ body {
         line-height: 1rem;
         color: rgb(130 127 124);
         font-variant-numeric: tabular-nums;
+
+        a:hover {
+            text-decoration: underline;
+        }
     }
 }
 
@@ -1483,6 +1487,10 @@ body {
 
 .co-project-handle {
     color: rgb(74 72 71);
+
+    &:hover {
+        text-decoration: underline;
+    }
 }
 
 .co-hairline {
@@ -1631,6 +1639,10 @@ body {
                 line-height: 1rem;
                 color: rgb(130 127 124);
                 font-variant-numeric: tabular-nums;
+
+                a:hover {
+                    text-decoration: underline;
+                }
             }
         }
     }

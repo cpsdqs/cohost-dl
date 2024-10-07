@@ -1,10 +1,15 @@
 use crate::post::PostBlock;
 use deno_core::_ops::RustToV8;
-use deno_core::{ascii_str, ascii_str_include, serde_v8, v8, JsRuntime};
+use deno_core::url::Url;
+use deno_core::{
+    ascii_str, serde_v8, v8, v8_set_flags, JsRuntime, RuntimeOptions, StaticModuleLoader,
+};
+use deno_web::TimersPermission;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::oneshot;
 
@@ -21,7 +26,8 @@ pub struct PostRenderRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostRenderResult {
-    html: String,
+    pub preview: String,
+    pub full: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,33 +142,69 @@ struct ThreadMarkdownRenderer {
     render_markdown_fn: v8::Global<v8::Function>,
 }
 
+deno_core::extension!(
+    small_runtime,
+    esm_entry_point = "ext:small_runtime/render_rt.js",
+    esm = [dir "src", "render_rt.js"],
+);
+
+struct AllowHrTime;
+
+impl TimersPermission for AllowHrTime {
+    fn allow_hrtime(&mut self) -> bool {
+        true
+    }
+}
+
 impl ThreadMarkdownRenderer {
     fn new() -> Self {
-        let mut rt = JsRuntime::new(Default::default());
-        rt.execute_script("render.js", ascii_str_include!("../md-render/compiled.js"))
+        let ignored = v8_set_flags(vec![
+            String::new(),
+            "--stack_trace_limit=256".into(),
+            "--no-async-stack-traces".into(),
+        ]);
+        assert_eq!(ignored, vec![String::new()]);
+
+        let mut rt = JsRuntime::new(RuntimeOptions {
+            extensions: vec![
+                deno_webidl::deno_webidl::init_ops_and_esm(),
+                deno_console::deno_console::init_ops_and_esm(),
+                deno_url::deno_url::init_ops_and_esm(),
+                deno_web::deno_web::init_ops_and_esm::<AllowHrTime>(
+                    Arc::new(Default::default()),
+                    Some(Url::parse("https://cohost.org/").unwrap()),
+                ),
+                small_runtime::init_ops_and_esm(),
+            ],
+            ..Default::default()
+        });
+
+        let render_module = rt
+            .lazy_load_es_module_with_code(
+                "file:///render.js",
+                include_str!("../md-render/compiled.js"),
+            )
             .expect("md render script error");
 
         let (render_post_fn, render_markdown_fn) = {
-            let main_context = rt.main_context();
-            let main_context2 = rt.main_context();
+            let mut scope = rt.handle_scope();
 
-            let mut scope = v8::HandleScope::with_context(rt.v8_isolate(), main_context);
-            let global_ctx = v8::Local::new(&mut scope, main_context2);
-            let global = global_ctx.global(&mut scope);
+            let exports = v8::Local::new(&mut scope, render_module);
+            let exports = v8::Local::<v8::Object>::try_from(exports).expect("no exports");
 
             let render_post_name = ascii_str!("renderPost").v8_string(&mut scope);
-            let render_post_fn = global
+            let render_post_fn = exports
                 .get(&mut scope, render_post_name.into())
-                .expect("missing renderPost global");
+                .expect("missing renderPost export");
             let render_post_fn = v8::Local::<v8::Function>::try_from(render_post_fn)
                 .expect("renderPost is not a function");
 
             let render_post_fn = v8::Global::new(&mut scope, render_post_fn);
 
             let render_markdown_name = ascii_str!("renderMarkdown").v8_string(&mut scope);
-            let render_markdown_fn = global
+            let render_markdown_fn = exports
                 .get(&mut scope, render_markdown_name.into())
-                .expect("missing renderMarkdown global");
+                .expect("missing renderMarkdown export");
             let render_markdown_fn = v8::Local::<v8::Function>::try_from(render_markdown_fn)
                 .expect("renderMarkdown is not a function");
 
@@ -189,18 +231,13 @@ impl ThreadMarkdownRenderer {
         };
 
         let result = rt.call_with_args(&self.render_post_fn, &[options]);
-        let event_loop = rt.run_event_loop(Default::default());
-
-        let (result, event_loop) = tokio::join! {
-            result,
-            event_loop,
-        };
-
-        event_loop?;
+        let result = rt
+            .with_event_loop_promise(result, Default::default())
+            .await?;
 
         let main_context = rt.main_context();
         let mut scope = v8::HandleScope::with_context(rt.v8_isolate(), main_context);
-        let result = result?.to_v8(&mut scope);
+        let result = result.to_v8(&mut scope);
         let result = serde_v8::from_v8(&mut scope, result)?;
 
         Ok(result)
@@ -220,18 +257,13 @@ impl ThreadMarkdownRenderer {
         };
 
         let result = rt.call_with_args(&self.render_markdown_fn, &[options]);
-        let event_loop = rt.run_event_loop(Default::default());
-
-        let (result, event_loop) = tokio::join! {
-            result,
-            event_loop,
-        };
-
-        event_loop?;
+        let result = rt
+            .with_event_loop_promise(result, Default::default())
+            .await?;
 
         let main_context = rt.main_context();
         let mut scope = v8::HandleScope::with_context(rt.v8_isolate(), main_context);
-        let result = result?.to_v8(&mut scope);
+        let result = result.to_v8(&mut scope);
         let result = serde_v8::from_v8(&mut scope, result)?;
 
         Ok(result)

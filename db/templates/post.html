@@ -81,7 +81,7 @@
     </div>
     <div class="i-outer-contents">
         <div class="i-contents prose">
-            {{ rendered_posts[post.postId].html | safe }}
+            {{ rendered_posts[post.postId].full | safe }}
         </div>
     </div>
     {% if post.tags | length %}

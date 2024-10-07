@@ -11,7 +11,11 @@ axum = { version = "0.7", features = ["macros"] }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 cssparser = "0.34"
+deno_console = "0.170"
 deno_core = "0.311"
+deno_url = "0.170"
+deno_web = "0.201"
+deno_webidl = "0.170"
 diesel = { version = "2.2", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
 diesel_migrations = "2.2"
 env_logger = "0.11"
@@ -29,7 +33,7 @@ sha2 = "0.10"
 tempfile = "3.1"
 tera = "1.20"
 thiserror = "1.0"
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.36", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
 toml = "0.8"
 urlencoding = "2.1"
