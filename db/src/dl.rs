@@ -2,7 +2,6 @@ use crate::context::{CohostContext, GetError, MAX_RETRIES};
 use crate::trpc::LoginLoggedIn;
 use crate::Config;
 use anyhow::{bail, Context};
-use diesel::connection::SimpleConnection;
 use diesel::SqliteConnection;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Url;
@@ -161,7 +160,7 @@ async fn load_likes(
         has_next = feed.pagination_mode.more_pages_forward;
 
         for post in &feed.posts {
-            ctx.insert_post(state, login, post, false).await?;
+            ctx.insert_post(ctx, state, login, post, false).await?;
         }
     }
 
@@ -218,7 +217,7 @@ async fn load_profile_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(state, login, post, false).await?;
+            ctx.insert_post(ctx, state, login, post, false).await?;
             count += 1;
         }
 
@@ -319,7 +318,7 @@ async fn load_tagged_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(state, login, post, false).await?;
+            ctx.insert_post(ctx, state, login, post, false).await?;
         }
 
         state
@@ -455,7 +454,7 @@ async fn load_comments_for_posts(
 
         match ctx.posts_single_post(&project_handle, post).await {
             Ok(post) => {
-                ctx.insert_single_post(state, login, &post).await?;
+                ctx.insert_single_post(ctx, state, login, &post).await?;
                 count += 1;
             }
             Err(GetError::NotFound(..)) => {
@@ -781,7 +780,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
         config.cookie,
         Duration::from_secs(config.request_timeout_secs.unwrap_or(120)),
         PathBuf::from(&config.root_dir),
-        Mutex::new(db),
+        db,
     );
     ctx.do_not_fetch_domains = config.do_not_fetch_domains.into_iter().collect();
 
@@ -850,7 +849,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
         if !has_all_posts || new_only {
             ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
 
-            ctx.db.lock().await.batch_execute("vacuum;").unwrap();
+            ok_or_quit(ctx.db.vacuum().await);
         }
     }
 
@@ -875,7 +874,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
             if !has_all_posts || new_only {
                 ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
 
-                ctx.db.lock().await.batch_execute("vacuum;").unwrap();
+                ok_or_quit(ctx.db.vacuum().await);
             }
         }
     }
@@ -892,7 +891,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
         if !has_all_posts {
             ok_or_quit(load_tagged_posts(&ctx, &state, &login, tag).await);
 
-            ctx.db.lock().await.batch_execute("vacuum;").unwrap();
+            ok_or_quit(ctx.db.vacuum().await);
         }
     }
 

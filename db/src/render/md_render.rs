@@ -5,8 +5,7 @@ use deno_core::{ascii_str, serde_v8, v8, JsRuntime, RuntimeOptions};
 use deno_web::TimersPermission;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
+use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::oneshot;
 
@@ -150,8 +149,8 @@ struct ThreadMarkdownRenderer {
 
 deno_core::extension!(
     small_runtime,
-    esm_entry_point = "ext:small_runtime/render_rt.js",
-    esm = [dir "src", "render_rt.js"],
+    esm_entry_point = "ext:small_runtime/md_render_rt.js",
+    esm = [dir "src/render", "md_render_rt.js"],
 );
 
 struct AllowHrTime;
@@ -181,7 +180,7 @@ impl ThreadMarkdownRenderer {
         let render_module = rt
             .lazy_load_es_module_with_code(
                 "file:///render.js",
-                include_str!("../md-render/compiled.js"),
+                include_str!("../../md-render/compiled.js"),
             )
             .expect("md render script error");
 

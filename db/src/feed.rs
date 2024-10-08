@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(unused)]
 pub struct PaginationMode {
     pub current_skip: u64,
     pub ideal_page_stride: u64,
@@ -20,7 +21,9 @@ pub struct PaginationMode {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostsFeed {
+    #[allow(unused)]
     pub highlighted_tags: Vec<String>,
+    #[allow(unused)]
     pub no_posts_string_id: String,
     pub pagination_mode: PaginationMode,
     pub posts: Vec<PostFromCohost>,
@@ -35,16 +38,20 @@ struct LikedPostsFeed {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaggedPostsFeed {
+    #[allow(unused)]
     pub no_posts_string_id: String,
     pub pagination_mode: PaginationMode,
     pub posts: Vec<PostFromCohost>,
     pub synonyms_and_related_tags: Vec<RelatedTag>,
+    #[allow(unused)]
     pub tag_name: String,
+    #[allow(unused)]
     pub show_18_plus_posts: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RelatedTag {
+    #[allow(unused)]
     pub tag_id: String,
     pub content: String,
     pub relationship: TagRelationship,

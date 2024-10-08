@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(unused)]
 pub struct LoginLoggedIn {
     pub activated: bool,
     pub delete_after: Option<String>,
@@ -43,6 +44,7 @@ struct ProfilePostsOptions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfilePosts {
+    #[allow(unused)]
     pub pagination: ProfilePostsPagination,
     pub posts: Vec<PostFromCohost>,
 }
@@ -55,6 +57,7 @@ pub struct ListEditedProjects {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(unused)]
 pub struct ProfilePostsPagination {
     current_page: u64,
     /// Bogus. do not trust this guy
@@ -95,6 +98,7 @@ pub struct FollowedFeedQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(unused)]
 pub struct FollowedFeedProject {
     pub project: ProjectFromCohost,
     pub latest_post: Option<PostFromCohost>,

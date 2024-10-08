@@ -1,3 +1,4 @@
+use crate::data::Database;
 use crate::dl::CurrentStateV1;
 use anyhow::{anyhow, Context};
 use diesel::SqliteConnection;
@@ -7,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -23,7 +25,7 @@ pub struct CohostContext {
     pub root_dir: PathBuf,
     temp_dir: PathBuf,
     pub do_not_fetch_domains: HashSet<String>,
-    pub(crate) db: Mutex<SqliteConnection>,
+    pub(crate) db: Database,
 }
 
 struct ResourceUrlProps {
@@ -96,12 +98,20 @@ impl From<std::io::Error> for LoadResError {
 
 pub const MAX_RETRIES: usize = 10;
 
+impl Deref for CohostContext {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
+}
+
 impl CohostContext {
     pub fn new(
         cookie: String,
         req_timeout: Duration,
         root_dir: PathBuf,
-        db: Mutex<SqliteConnection>,
+        db: SqliteConnection,
     ) -> Self {
         let client = Client::builder()
             .user_agent(USER_AGENT)
@@ -118,7 +128,7 @@ impl CohostContext {
             root_dir,
             temp_dir,
             do_not_fetch_domains: Default::default(),
-            db,
+            db: Database::new(db),
         }
     }
 

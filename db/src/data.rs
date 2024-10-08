@@ -10,15 +10,20 @@ use crate::project::{
 use crate::res_ref::ResourceRefs;
 use crate::trpc::{LoginLoggedIn, SinglePost};
 use anyhow::Context;
+use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::{Insertable, RunQueryDsl};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tokio::sync::Mutex;
+
+pub struct Database {
+    db: Mutex<SqliteConnection>,
+}
 
 /// Select fields from posts to store in the database blob
 #[derive(Debug, Serialize, Deserialize)]
@@ -242,74 +247,20 @@ impl DbComment {
     }
 }
 
-impl CohostContext {
-    pub async fn insert_project(&self, project: &ProjectFromCohost) -> anyhow::Result<()> {
-        trace!("insert_project {}", project.project_id);
-
-        use crate::schema::project_resources::dsl::*;
-        use crate::schema::projects::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        let base = Url::parse(&format!("https://cohost.org/{}", project.handle))?;
-
-        let project_data = ProjectDataV1::from_project(&project);
-        let refs = project_data.collect_refs(&base);
-
-        let project_data = rmp_serde::to_vec_named(&project_data).context("DB data")?;
-
-        let db_project = DbProject::from_project(project, project_data, 1);
-
-        diesel::insert_into(projects)
-            .values(&db_project)
-            .on_conflict(id)
-            .do_update()
-            .set(&db_project)
-            .execute(db)
-            .context("DB:projects")?;
-
-        {
-            diesel::delete(project_resources)
-                .filter(project_id.eq(project.project_id as i32))
-                .execute(db)
-                .context("DB:project_resources clear")?;
-
-            diesel::insert_into(project_resources)
-                .values(
-                    &refs
-                        .into_iter()
-                        .map(|u| {
-                            (
-                                project_id.eq(project.project_id as i32),
-                                url.eq(u.to_string()),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .execute(db)
-                .context("DB:project_resources")?;
+impl Database {
+    pub fn new(conn: SqliteConnection) -> Self {
+        Self {
+            db: Mutex::new(conn),
         }
-
-        Ok(())
     }
 
-    pub async fn insert_follow(&self, from_project: u64, to_project: u64) -> anyhow::Result<()> {
-        use crate::schema::follows::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        diesel::insert_into(follows)
-            .values(&(
-                from_project_id.eq(from_project as i32),
-                to_project_id.eq(to_project as i32),
-            ))
-            .execute(db)?;
-
-        Ok(())
+    pub async fn vacuum(&self) -> anyhow::Result<()> {
+        Ok(self.db.lock().await.batch_execute("vacuum;")?)
     }
+}
 
+/// Project queries
+impl Database {
     pub async fn followed_by_any(&self) -> anyhow::Result<Vec<u64>> {
         use crate::schema::follows::dsl::*;
 
@@ -349,7 +300,10 @@ impl CohostContext {
             .get_result(db)?;
         Ok(count > 0)
     }
+}
 
+/// Post queries
+impl Database {
     pub async fn has_post(&self, post_id: u64) -> QueryResult<bool> {
         use crate::schema::posts::dsl::*;
         let mut db = self.db.lock().await;
@@ -379,16 +333,6 @@ impl CohostContext {
         let db = &mut *db;
 
         Ok(posts.filter(id.eq(post_id as i32)).first(db)?)
-    }
-
-    pub async fn total_post_count(&self) -> anyhow::Result<u64> {
-        use crate::schema::posts::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        let result: i64 = posts.count().get_result(db)?;
-        Ok(result as u64)
     }
 
     pub async fn total_non_transparent_post_count(&self) -> anyhow::Result<u64> {
@@ -501,7 +445,10 @@ impl CohostContext {
             .order_by(published_at)
             .load(db)
     }
+}
 
+/// Resource queries
+impl Database {
     pub async fn total_post_resources_count(&self) -> anyhow::Result<u64> {
         use crate::schema::post_resources::dsl::*;
 
@@ -598,9 +545,188 @@ impl CohostContext {
         Ok(items)
     }
 
+    pub async fn get_res_content_type(&self, the_url: &Url) -> anyhow::Result<Option<String>> {
+        use crate::schema::resource_content_types::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let the_url = the_url.to_string();
+
+        let res: Option<String> = resource_content_types
+            .filter(url.eq(the_url))
+            .select(content_type)
+            .first(db)
+            .optional()?;
+
+        Ok(res)
+    }
+
+    pub async fn get_resource_urls_for_post(&self, post: u64) -> QueryResult<Vec<String>> {
+        use crate::schema::post_resources::dsl as res;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        res::post_resources
+            .filter(res::post_id.eq(post as i32))
+            .select(res::url)
+            .load(db)
+    }
+
+    pub async fn get_resource_urls_for_project(&self, project: u64) -> QueryResult<Vec<String>> {
+        use crate::schema::project_resources::dsl as res;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        res::project_resources
+            .filter(res::project_id.eq(project as i32))
+            .select(res::url)
+            .load(db)
+    }
+
+    pub async fn get_resource_urls_for_comment(&self, comment: &str) -> QueryResult<Vec<String>> {
+        use crate::schema::comment_resources::dsl as res;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        res::comment_resources
+            .filter(res::comment_id.eq(comment))
+            .select(res::url)
+            .load(db)
+    }
+
+    pub async fn total_url_file_count(&self) -> QueryResult<u64> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i64 = url_files.count().get_result(db)?;
+        Ok(result as u64)
+    }
+
+    pub async fn get_url_file(&self, the_url: &Url) -> QueryResult<Option<PathBuf>> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let path: Option<Vec<u8>> = url_files
+            .filter(url.eq(the_url.to_string()))
+            .select(file_path)
+            .first(db)
+            .optional()?;
+
+        Ok(path.map(|path| {
+            // SAFETY: well, we stored it that way
+            PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) })
+        }))
+    }
+
+    pub async fn get_url_files_batch(
+        &self,
+        offset: i64,
+        limit: i64,
+    ) -> QueryResult<Vec<(String, PathBuf)>> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        let items = url_files
+            .select((url, file_path))
+            .offset(offset)
+            .limit(limit)
+            .load_iter::<(String, Vec<u8>), _>(db)?;
+
+        let mut res_items = Vec::new();
+        for item in items {
+            let (the_url, path) = item?;
+            res_items.push((
+                the_url,
+                // SAFETY: well, we stored it that way
+                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
+            ));
+        }
+        Ok(res_items)
+    }
+}
+
+/// Insertions
+impl Database {
+    pub async fn insert_project(&self, project: &ProjectFromCohost) -> anyhow::Result<()> {
+        trace!("insert_project {}", project.project_id);
+
+        use crate::schema::project_resources::dsl::*;
+        use crate::schema::projects::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let base = Url::parse(&format!("https://cohost.org/{}", project.handle))?;
+
+        let project_data = ProjectDataV1::from_project(&project);
+        let refs = project_data.collect_refs(&base);
+
+        let project_data = rmp_serde::to_vec_named(&project_data).context("DB data")?;
+
+        let db_project = DbProject::from_project(project, project_data, 1);
+
+        diesel::insert_into(projects)
+            .values(&db_project)
+            .on_conflict(id)
+            .do_update()
+            .set(&db_project)
+            .execute(db)
+            .context("DB:projects")?;
+
+        {
+            diesel::delete(project_resources)
+                .filter(project_id.eq(project.project_id as i32))
+                .execute(db)
+                .context("DB:project_resources clear")?;
+
+            diesel::insert_into(project_resources)
+                .values(
+                    &refs
+                        .into_iter()
+                        .map(|u| {
+                            (
+                                project_id.eq(project.project_id as i32),
+                                url.eq(u.to_string()),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .execute(db)
+                .context("DB:project_resources")?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn insert_follow(&self, from_project: u64, to_project: u64) -> anyhow::Result<()> {
+        use crate::schema::follows::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        diesel::insert_into(follows)
+            .values(&(
+                from_project_id.eq(from_project as i32),
+                to_project_id.eq(to_project as i32),
+            ))
+            .execute(db)?;
+
+        Ok(())
+    }
+
     #[async_recursion::async_recursion]
     pub async fn insert_post(
         &self,
+        ctx: &CohostContext,
         state: &Mutex<CurrentStateV1>,
         login: &LoginLoggedIn,
         post: &PostFromCohost,
@@ -614,7 +740,7 @@ impl CohostContext {
         );
 
         for share_post in &post.share_tree {
-            self.insert_post(state, login, share_post, true)
+            self.insert_post(ctx, state, login, share_post, true)
                 .await
                 .with_context(|| {
                     format!(
@@ -658,13 +784,15 @@ impl CohostContext {
                         post.posting_project.handle, post.filename
                     );
 
-                    let single_post = self
+                    let single_post = ctx
                         .posts_single_post(&post.posting_project.handle, post.post_id)
                         .await;
 
                     match single_post {
                         Ok(single_post) => {
-                            return self.insert_single_post(state, login, &single_post).await;
+                            return self
+                                .insert_single_post(ctx, state, login, &single_post)
+                                .await;
                         }
                         Err(err @ GetError::NotFound(..)) => {
                             error!("could not load additional post due to 404. skipping!\n{err}");
@@ -879,13 +1007,14 @@ impl CohostContext {
 
     pub async fn insert_single_post(
         &self,
+        ctx: &CohostContext,
         state: &Mutex<CurrentStateV1>,
         login: &LoginLoggedIn,
         single_post: &SinglePost,
     ) -> anyhow::Result<()> {
         trace!("insert_single_post {}", single_post.post.post_id);
 
-        self.insert_post(state, login, &single_post.post, false)
+        self.insert_post(ctx, state, login, &single_post.post, false)
             .await
             .with_context(|| {
                 format!(
@@ -952,23 +1081,6 @@ impl CohostContext {
         Ok(())
     }
 
-    pub async fn get_res_content_type(&self, the_url: &Url) -> anyhow::Result<Option<String>> {
-        use crate::schema::resource_content_types::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        let the_url = the_url.to_string();
-
-        let res: Option<String> = resource_content_types
-            .filter(url.eq(the_url))
-            .select(content_type)
-            .first(db)
-            .optional()?;
-
-        Ok(res)
-    }
-
     pub async fn insert_res_content_type(
         &self,
         the_url: &Url,
@@ -1008,96 +1120,5 @@ impl CohostContext {
             .execute(db)?;
 
         Ok(())
-    }
-
-    pub async fn get_resource_urls_for_post(&self, post: u64) -> QueryResult<Vec<String>> {
-        use crate::schema::post_resources::dsl as res;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        res::post_resources
-            .filter(res::post_id.eq(post as i32))
-            .select(res::url)
-            .load(db)
-    }
-
-    pub async fn get_resource_urls_for_project(&self, project: u64) -> QueryResult<Vec<String>> {
-        use crate::schema::project_resources::dsl as res;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        res::project_resources
-            .filter(res::project_id.eq(project as i32))
-            .select(res::url)
-            .load(db)
-    }
-
-    pub async fn get_resource_urls_for_comment(&self, comment: &str) -> QueryResult<Vec<String>> {
-        use crate::schema::comment_resources::dsl as res;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        res::comment_resources
-            .filter(res::comment_id.eq(comment))
-            .select(res::url)
-            .load(db)
-    }
-
-    pub async fn total_url_file_count(&self) -> QueryResult<u64> {
-        use crate::schema::url_files::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        let result: i64 = url_files.count().get_result(db)?;
-        Ok(result as u64)
-    }
-
-    pub async fn get_url_file(&self, the_url: &Url) -> QueryResult<Option<PathBuf>> {
-        use crate::schema::url_files::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-
-        let path: Option<Vec<u8>> = url_files
-            .filter(url.eq(the_url.to_string()))
-            .select(file_path)
-            .first(db)
-            .optional()?;
-
-        Ok(path.map(|path| {
-            // SAFETY: well, we stored it that way
-            PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) })
-        }))
-    }
-
-    pub async fn get_url_files_batch(
-        &self,
-        offset: i64,
-        limit: i64,
-    ) -> QueryResult<Vec<(String, PathBuf)>> {
-        use crate::schema::url_files::dsl::*;
-
-        let mut db = self.db.lock().await;
-        let db = &mut *db;
-        let items = url_files
-            .select((url, file_path))
-            .offset(offset)
-            .limit(limit)
-            .load_iter::<(String, Vec<u8>), _>(db)?;
-
-        let mut res_items = Vec::new();
-        for item in items {
-            let (the_url, path) = item?;
-            res_items.push((
-                the_url,
-                // SAFETY: well, we stored it that way
-                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
-            ));
-        }
-        Ok(res_items)
     }
 }

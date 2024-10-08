@@ -110,6 +110,7 @@ pub struct PostBlockMarkdown {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostBlockAttachmentWrapper {
+    // WONTFIX: this struct is technically missing a type: "attachment" field
     pub attachment: PostBlockAttachment,
 }
 
