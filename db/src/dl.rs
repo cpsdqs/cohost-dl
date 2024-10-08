@@ -178,22 +178,40 @@ async fn load_profile_posts(
     state: &Mutex<CurrentStateV1>,
     login: &LoginLoggedIn,
     project_id: u64,
+    new_only: bool,
 ) -> anyhow::Result<()> {
     let project = ctx.project(project_id).await?;
-    info!("loading all posts from @{}", project.handle);
+
+    if new_only {
+        info!("loading new posts from @{}", project.handle);
+    } else {
+        info!("loading all posts from @{}", project.handle);
+    }
 
     let bar = ProgressBar::new_spinner();
     bar.enable_steady_tick(Duration::from_millis(100));
     bar.set_message(format!("@{} first page", project.handle));
 
     let mut count = 0;
-    for page in 0.. {
+    'outer: for page in 0.. {
         let posts = ctx.posts_profile_posts(&project.handle, page).await?;
 
         let message = format!("@{} page {} ({count} posts)", project.handle, page + 1);
         bar.set_message(message.clone());
 
         for (i, post) in posts.posts.iter().enumerate() {
+            if new_only && ctx.has_post(post.post_id).await? {
+                if post.pinned {
+                    // Placing this continue in this exact spot so that it:
+                    // - will download new pinned posts
+                    // - will not stop early on an old pinned post; there might be new posts after
+                    // - will not count old pinned posts towards the "new posts loaded" count
+                    continue;
+                }
+
+                break 'outer;
+            }
+
             bar.set_message(format!(
                 "{message} ← adding post {i}/{} (ID {})",
                 posts.posts.len(),
@@ -201,9 +219,9 @@ async fn load_profile_posts(
             ));
 
             ctx.insert_post(state, login, post, false).await?;
+            count += 1;
         }
 
-        count += posts.posts.len();
         if posts.posts.is_empty() {
             break;
         }
@@ -827,8 +845,10 @@ pub async fn download(config: Config, db: SqliteConnection) {
             .or_default()
             .has_all_posts;
 
-        if !has_all_posts {
-            ok_or_quit(load_profile_posts(&ctx, &state, &login, project).await);
+        let new_only = has_all_posts && config.load_new_posts;
+
+        if !has_all_posts || new_only {
+            ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
 
             ctx.db.lock().await.batch_execute("vacuum;").unwrap();
         }
@@ -850,8 +870,10 @@ pub async fn download(config: Config, db: SqliteConnection) {
                 .or_default()
                 .has_all_posts;
 
-            if !has_all_posts {
-                ok_or_quit(load_profile_posts(&ctx, &state, &login, project).await);
+            let new_only = has_all_posts && config.load_new_posts;
+
+            if !has_all_posts || new_only {
+                ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
 
                 ctx.db.lock().await.batch_execute("vacuum;").unwrap();
             }
