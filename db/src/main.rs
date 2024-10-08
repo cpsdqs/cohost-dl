@@ -55,6 +55,8 @@ pub struct Config {
     #[serde(default)]
     pub skip_follows: Vec<String>,
     #[serde(default)]
+    pub load_new_posts: bool,
+    #[serde(default)]
     pub load_comments: bool,
     #[serde(default)]
     pub load_post_resources: bool,

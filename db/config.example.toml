@@ -31,6 +31,10 @@ load_dashboard = false
 # load all liked posts for the currently active page
 load_likes = false
 
+# load new posts for all projects previously saved in full
+# (does not affect liked posts or bookmarked tags)
+load_new_posts = false
+
 # when loading the dashboard: ignore these particular projects
 skip_follows = [
     'example-handle',
