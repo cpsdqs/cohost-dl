@@ -1,10 +1,11 @@
 import { renderToString } from "react-dom/server";
 import { renderMarkdownReactNoHTML } from "./cohost/lib/markdown/other-rendering";
 import { generatePostAst } from "./cohost/lib/markdown/post-rendering";
-import { PostBody } from "./cohost/preact/components/posts/post-body";
+import { PostBodyInner } from "./cohost/preact/components/posts/post-body";
 import { AttachmentRowViewBlock, AttachmentViewBlock, ViewBlock } from "./cohost/shared/types/post-blocks";
 import { PostId } from "./cohost/shared/types/ids";
 import { RenderingContext } from "./cohost/lib/markdown/shared-types";
+import { chooseAgeRuleset } from "./cohost/lib/markdown/sanitize";
 
 const global = globalThis as Record<string, unknown>;
 
@@ -17,7 +18,8 @@ interface PostRenderRequest {
 
 interface PostResult {
     preview: string;
-    full: string;
+    full: string | null;
+    className: string;
 }
 
 interface MarkdownRenderRequest {
@@ -80,31 +82,35 @@ export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
         renderingContext: "post",
     });
 
+    const ruleset = chooseAgeRuleset(new Date(args.publishedAt));
+    const hasReadMore = postAst.readMoreIndex !== null;
+
+    const viewModel = {
+        postId: 0 as PostId,
+        blocks,
+        astMap: postAst,
+    };
+
     const preview = renderToString(
-        <PostBody
-            viewModel={{
-                postId: 0 as PostId,
-                blocks,
-                astMap: postAst,
-            }}
-            skipCollapse={false}
-            effectiveDate={args.publishedAt}
+        <PostBodyInner
+            viewModel={viewModel}
+            renderUntilBlockIndex={hasReadMore ? postAst.readMoreIndex : blocks.length}
+            ruleset={ruleset}
         />
     );
 
-    const full = renderToString(
-        <PostBody
-            viewModel={{
-                postId: 0 as PostId,
-                blocks,
-                astMap: postAst,
-            }}
-            skipCollapse={true}
-            effectiveDate={args.publishedAt}
-        />
-    );
+    let full = null;
+    if (hasReadMore) {
+        full = renderToString(
+            <PostBodyInner
+                viewModel={viewModel}
+                renderUntilBlockIndex={blocks.length}
+                ruleset={ruleset}
+            />
+        );
+    }
 
-    return { preview, full };
+    return { preview, full, className: ruleset.className };
 }
 
 export function renderMarkdown(args: MarkdownRenderRequest): MarkdownResult {

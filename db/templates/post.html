@@ -69,7 +69,7 @@
 </div>
 {% endmacro co_post_header %}
 
-{% macro co_post_contents(post) %}
+{% macro co_post_contents(post, expand) %}
 <div class="co-post-contents">
     {%- if post.headline %}
     <div class="i-headline">
@@ -80,7 +80,34 @@
         </a>
     </div>
     {% endif -%}
-    {{ rendered_posts[post.postId].full | safe }}
+
+    {%- set rendered = rendered_posts[post.postId] -%}
+    {%- if rendered.full -%}
+    <div class="i-expandable has-css-state">
+        {% set id = "post-expanded-" ~ post.postId -%}
+        <input
+            class="i-expanded-state"
+            type="checkbox"
+            id="{{ id }}"
+            {% if expand -%}
+            checked
+            {%- endif %}
+        />
+        <div class="i-post-body i-preview {{ rendered.className }}">
+            {{ rendered.preview | safe }}
+            <label class="i-read-more co-read-more-read-less" for="{{ id }}">read more</label>
+        </div>
+        <div class="i-post-body i-full {{ rendered.className }}">
+            {{ rendered.full | safe }}
+            <label class="i-read-less co-read-more-read-less" for="{{ id }}">read less</label>
+        </div>
+    </div>
+    {%- else -%}
+    <div class="i-post-body {{ rendered.className }}">
+        {{ rendered.preview | safe }}
+    </div>
+    {%- endif -%}
+
     {%- if post.tags | length -%}
     <div class="i-tags">
         {%- for tag in post.tags -%}
@@ -93,16 +120,16 @@
 </div>
 {% endmacro co_post_contents %}
 
-{% macro co_thread_item(post) %}
+{% macro co_thread_item(post, expand) %}
 <div class="co-thread-item" id="post-{{ post.postId }}">
     <div class="i-header">
         {{ post::co_post_header(post = post, show_shared_from = false) }}
     </div>
-    {{ post::co_post_contents(post = post) }}
+    {{ post::co_post_contents(post = post, expand = expand) }}
 </div>
 {% endmacro co_thread_item %}
 
-{% macro render(post) %}
+{% macro render(post, expand) %}
 <article class="co-post-box">
     <div class="co-thread-header">
         {{ post::co_post_header(post = post, show_shared_from = true) }}
@@ -115,16 +142,16 @@
     {% continue %}
     {% endif %}
     <hr class="co-hairline" />
-    {{ post::co_thread_item(post = post) }}
+    {{ post::co_thread_item(post = post, expand = false) }}
     {% endfor %}
     {% if not post.transparentShareOfPostId %}
     <hr class="co-hairline" />
-    {{ post::co_thread_item(post = post) }}
+    {{ post::co_thread_item(post = post, expand = expand) }}
     {% endif %}
     {% else %}
     <hr class="co-hairline" />
     <div id="post-{{ post.postId}}"></div>
-    {{ post::co_post_contents(post = post) }}
+    {{ post::co_post_contents(post = post, expand = expand) }}
     {% endif %}
 
     <hr class="co-hairline" />

@@ -43,7 +43,7 @@
                 datetime="{{ comment.comment.postedAtISO }}"
                 title="{{ comment.comment.postedAtISO | date(format = date_fmt_title) }}"
             >
-                <a href="/{{ comment.poster.handle }}/post/{{ post.filename }}">
+                <a href="/{{ post.postingProject.handle }}/post/{{ post.filename }}#comment-{{ comment.comment.commentId }}">
                     {{ comment.comment.postedAtISO | date(format = date_fmt_text) }}
                 </a>
             </time>

@@ -287,7 +287,7 @@ index 90a3017..dd4365d 100644
          let embedBody = undefined;
  
 diff --git a/preact/components/posts/post-body.tsx b/preact/components/posts/post-body.tsx
-index fb65957..809886f 100644
+index fb65957..3779b71 100644
 --- a/preact/components/posts/post-body.tsx
 +++ b/preact/components/posts/post-body.tsx
 @@ -1,6 +1,6 @@
@@ -311,6 +311,15 @@ index fb65957..809886f 100644
  import _ from "lodash";
  import {
      FunctionComponent,
+@@ -106,7 +106,7 @@ function attachmentDimensions(attachment: AttachmentViewBlock) {
+     } else return undefined;
+ }
+ 
+-const PostBodyInner: FunctionComponent<PostBodyInnerProps> = ({
++export const PostBodyInner: FunctionComponent<PostBodyInnerProps> = ({
+     viewModel,
+     renderUntilBlockIndex,
+     ruleset,
 diff --git a/preact/hooks/use-display-prefs.ts b/preact/hooks/use-display-prefs.ts
 index f728487..12eca3f 100644
 --- a/preact/hooks/use-display-prefs.ts

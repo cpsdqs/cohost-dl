@@ -27,7 +27,7 @@
 
 <div class="page-contents">
     <div class="single-post-container">
-        {{ post::render(post = post) }}
+        {{ post::render(post = post, expand = true) }}
 
         <div id="comments">
             {% for post in post.shareTree %}

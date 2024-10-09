@@ -1410,6 +1410,7 @@ body {
     margin-top: 1rem;
     display: grid;
     gap: 0.5rem 1.5rem;
+    grid-template-columns: 100%;
 }
 
 .co-post-box {
@@ -1418,6 +1419,11 @@ body {
     overflow-x: auto;
     background: rgb(255 255 255);
     box-shadow: 0 4px 5px rgba(0, 0, 0, .14), 0 1px 10px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .2);
+}
+
+.co-read-more-read-less {
+    background: rgb(255 255 255);
+    color: rgb(var(--color-cherry));
 }
 
 .co-thread-header {
@@ -1514,7 +1520,8 @@ body {
         }
     }
 
-    > [data-post-body] {
+    > .i-post-body,
+    > .i-expandable > .i-post-body {
         position: relative;
         overflow: hidden;
         overflow: clip;
@@ -1522,7 +1529,7 @@ body {
         &.isolate {
             isolation: isolate;
         }
-        &.contain-paint {
+        &.co-contain-paint {
             contain: paint;
         }
 
@@ -1531,6 +1538,39 @@ body {
             padding: 0 0.75rem;
             overflow-wrap: break-word;
             overflow: hidden;
+        }
+    }
+
+    > .i-expandable {
+        &.has-css-state {
+            > .i-expanded-state {
+                display: none;
+            }
+
+            > .i-full,
+            > .i-expanded-state:checked ~ .i-preview {
+                display: none;
+            }
+
+            > .i-expanded-state:checked ~ .i-full {
+                display: block;
+            }
+        }
+
+        > .i-post-body > .i-read-more,
+        > .i-post-body > .i-read-less {
+            display: inline-block;
+            text-align: left;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            padding-left: 0.75rem;
+            padding-bottom: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+
+            &:hover {
+                text-decoration: underline;
+            }
         }
     }
 
@@ -1650,6 +1690,11 @@ body {
                 }
             }
         }
+
+        > .i-contents {
+            overflow-wrap: break-word;
+            overflow: hidden;
+        }
     }
 }
 
@@ -1697,6 +1742,11 @@ body {
         border-color: rgb(74 72 71);
         background-color: rgb(0 0 0);
         box-shadow: 0 4px 5px rgba(0, 0, 0, .14), 0 1px 10px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .2);
+    }
+
+    .co-read-more-read-less {
+        background-color: rgb(0 0 0);
+        color: rgb(var(--color-mango));
     }
 
     .co-post-box .prose,

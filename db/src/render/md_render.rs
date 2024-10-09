@@ -19,9 +19,11 @@ pub struct PostRenderRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PostRenderResult {
     pub preview: String,
-    pub full: String,
+    pub full: Option<String>,
+    pub class_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
