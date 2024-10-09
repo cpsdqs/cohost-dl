@@ -145,7 +145,7 @@ index 3aa44a8..cfceeb8 100644
  import _ from "lodash";
  
 diff --git a/preact/components/partials/project-avatar.tsx b/preact/components/partials/project-avatar.tsx
-index b056762..fac7fee 100644
+index b056762..32a681c 100644
 --- a/preact/components/partials/project-avatar.tsx
 +++ b/preact/components/partials/project-avatar.tsx
 @@ -1,9 +1,9 @@
@@ -160,6 +160,14 @@ index b056762..fac7fee 100644
  import { LockClosedIcon } from "@heroicons/react/24/solid";
  import React, { FunctionComponent, useMemo } from "react";
  import { z } from "zod";
+@@ -74,6 +74,7 @@ export const ProjectAvatar: FunctionComponent<{
+ 
+     const processedUrl = useMemo(() => {
+         const src = animate ? project.avatarURL : project.avatarPreviewURL;
++        return src;
+ 
+         const parsedSrc = new URL(src);
+         // hardcode this to 2 because it doesn't matter that much from a size
 diff --git a/preact/components/posts/blocks/ask.tsx b/preact/components/posts/blocks/ask.tsx
 index 52e3245..baaf3ea 100644
 --- a/preact/components/posts/blocks/ask.tsx
@@ -373,6 +381,21 @@ index 2b1ea42..10cfcf5 100644
  
  export const SiteConfigProvider = createContext<SiteConfigType>(defaultConfig);
  
+diff --git a/shared/types/asks.ts b/shared/types/asks.ts
+index d898fd9..b9c674a 100644
+--- a/shared/types/asks.ts
++++ b/shared/types/asks.ts
+@@ -8,8 +8,8 @@ export type AskState = z.infer<typeof AskState>;
+ const FilteredProject = z.object({
+     projectId: ProjectId,
+     handle: ProjectHandle,
+-    avatarURL: z.string().url(),
+-    avatarPreviewURL: z.string().url(),
++    avatarURL: z.string(),
++    avatarPreviewURL: z.string(),
+     privacy: ProjectPrivacyEnum,
+     flags: ProjectFlag.array(),
+     avatarShape: AvatarShape,
 diff --git a/shared/types/ids.ts b/shared/types/ids.ts
 index b9cee3b..6ad7514 100644
 --- a/shared/types/ids.ts

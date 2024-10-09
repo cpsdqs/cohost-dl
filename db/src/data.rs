@@ -562,37 +562,49 @@ impl Database {
         Ok(res)
     }
 
-    pub async fn get_resource_urls_for_post(&self, post: u64) -> QueryResult<Vec<String>> {
+    pub async fn get_saved_resource_urls_for_post(&self, post: u64) -> QueryResult<Vec<String>> {
         use crate::schema::post_resources::dsl as res;
+        use crate::schema::url_files::dsl as files;
 
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
         res::post_resources
+            .inner_join(files::url_files.on(res::url.eq(files::url)))
             .filter(res::post_id.eq(post as i32))
             .select(res::url)
             .load(db)
     }
 
-    pub async fn get_resource_urls_for_project(&self, project: u64) -> QueryResult<Vec<String>> {
+    pub async fn get_saved_resource_urls_for_project(
+        &self,
+        project: u64,
+    ) -> QueryResult<Vec<String>> {
         use crate::schema::project_resources::dsl as res;
+        use crate::schema::url_files::dsl as files;
 
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
         res::project_resources
+            .inner_join(files::url_files.on(res::url.eq(files::url)))
             .filter(res::project_id.eq(project as i32))
             .select(res::url)
             .load(db)
     }
 
-    pub async fn get_resource_urls_for_comment(&self, comment: &str) -> QueryResult<Vec<String>> {
+    pub async fn get_saved_resource_urls_for_comment(
+        &self,
+        comment: &str,
+    ) -> QueryResult<Vec<String>> {
         use crate::schema::comment_resources::dsl as res;
+        use crate::schema::url_files::dsl as files;
 
         let mut db = self.db.lock().await;
         let db = &mut *db;
 
         res::comment_resources
+            .inner_join(files::url_files.on(res::url.eq(files::url)))
             .filter(res::comment_id.eq(comment))
             .select(res::url)
             .load(db)

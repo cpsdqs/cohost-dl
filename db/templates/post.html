@@ -9,6 +9,7 @@
         alt="{{ post.postingProject.handle }}"
     />
 
+    {% if post.postingProject.displayName %}
     <a
         class="co-project-display-name"
         rel="author"
@@ -17,6 +18,7 @@
     >
         {{ post.postingProject.displayName }}
     </a>
+    {% endif %}
 
     <a
         class="co-project-handle"

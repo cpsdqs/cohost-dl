@@ -2,12 +2,26 @@ import { renderToString } from "react-dom/server";
 import { renderMarkdownReactNoHTML } from "./cohost/lib/markdown/other-rendering";
 import { generatePostAst } from "./cohost/lib/markdown/post-rendering";
 import { PostBodyInner } from "./cohost/preact/components/posts/post-body";
-import { AttachmentRowViewBlock, AttachmentViewBlock, ViewBlock } from "./cohost/shared/types/post-blocks";
+import {
+    AskViewBlock,
+    AttachmentRowViewBlock,
+    AttachmentViewBlock,
+    ViewBlock
+} from "./cohost/shared/types/post-blocks";
 import { PostId } from "./cohost/shared/types/ids";
 import { RenderingContext } from "./cohost/lib/markdown/shared-types";
 import { chooseAgeRuleset } from "./cohost/lib/markdown/sanitize";
-
-const global = globalThis as Record<string, unknown>;
+import { Element, Node, Parent, Root } from "hast";
+import { Image, Node as MdastNode, Parent as MdastParent, Root as MdastRoot } from "mdast";
+import { unified } from "unified";
+import { Raw } from "mdast-util-to-hast";
+import rehypeRaw from "rehype-raw";
+import rehypeStringify from "rehype-stringify";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import remarkStringify from "remark-stringify";
+import { generate as cssGenerate, parse as cssParse, walk as cssWalk } from "css-tree";
+import remarkBreaks from "remark-breaks";
 
 interface PostRenderRequest {
     blocks: ViewBlock[];
@@ -38,6 +52,62 @@ function makeResourceURL(url: string): string {
     return `/resource?url=${encodeURIComponent(url)}`;
 }
 
+function rewriteMdastPlugin(resources: string[]) {
+    const rewrite = (node: MdastNode) => {
+        if (node.type === "image") {
+            const image = node as Image;
+            if (resources.includes(image.url)) {
+                return { ...image, url: makeResourceURL(image.url) };
+            }
+        }
+
+        if ("children" in node) {
+            const parent = node as MdastParent;
+            return { ...parent, children: parent.children.map(rewrite) }
+        }
+
+        return node;
+    };
+
+    return () => (tree: MdastRoot) => rewrite(tree) as MdastRoot;
+}
+
+function rewriteMarkdownString(markdown: string, resources: string[], date: Date): string {
+    const ruleset = chooseAgeRuleset(date);
+
+    let processor = unified().use(remarkParse);
+
+    if (ruleset.singleLineBreaks) {
+        processor = processor.use(remarkBreaks);
+    }
+
+    return processor
+        .use(remarkGfm, { singleTilde: false })
+        .use(rewriteMdastPlugin(resources))
+        .use(remarkStringify)
+        .processSync(markdown)
+        .toString();
+}
+
+function rewriteAsk(ask: AskViewBlock, resources: string[]): AskViewBlock {
+    const content = rewriteMarkdownString(ask.ask.content, resources, new Date(ask.ask.sentAt));
+
+    if (!ask.ask.anon) {
+        let askingProject = { ...ask.ask.askingProject };
+
+        if (resources.includes(askingProject.avatarURL)) {
+            askingProject.avatarURL = makeResourceURL(askingProject.avatarURL);
+        }
+        if (resources.includes(askingProject.avatarPreviewURL)) {
+            askingProject.avatarPreviewURL = makeResourceURL(askingProject.avatarPreviewURL);
+        }
+
+        return { ...ask, ask: { ...ask.ask, askingProject, content } } as AskViewBlock;
+    }
+
+    return { ...ask, ask: { ...ask.ask, content } } as AskViewBlock;
+}
+
 function rewriteAttachment(attachment: AttachmentViewBlock, resources: string[]): AttachmentViewBlock {
     let inner = { ...attachment.attachment };
 
@@ -59,11 +129,85 @@ function rewriteAttachmentRow(attachmentRow: AttachmentRowViewBlock, resources: 
     };
 }
 
+function rewriteHast<N extends Node>(node: N, resources: string[]): N {
+    if (node.type === "element") {
+        const element = node as Node as Element;
+
+        let properties = element.properties;
+        if (typeof properties.style === "string") {
+            const tree = cssParse(properties.style, { context: "declarationList" });
+
+            let mutated = false;
+            cssWalk(tree, (node) => {
+                if (node.type === "Url") {
+                    const resolved = new URL(node.value, "https://cohost.org/");
+                    if (resources.includes(resolved.href)) {
+                        node.value = makeResourceURL(resolved.href);
+                        mutated = true;
+                    }
+                }
+            });
+
+            if (mutated) {
+                properties = { ...properties, style: cssGenerate(tree) };
+            }
+        }
+
+        if (typeof properties.src === "string") {
+            const resolved = new URL(properties.src, "https://cohost.org/");
+            if (resources.includes(resolved.href)) {
+                properties = { ...properties, src: makeResourceURL(resolved.href) };
+            }
+        }
+
+        if (typeof properties.srcset === "string") {
+            const parts = properties.srcset.split(' ').map(part => {
+                let resolved: URL;
+                try {
+                    resolved = new URL(part, "https://cohost.org/");
+                } catch {
+                    return part;
+                }
+
+                if (resources.includes(resolved.href)) {
+                    return makeResourceURL(resolved.href);
+                }
+                return part;
+            });
+
+            properties = { ...properties, srcset: parts.join(' ') };
+        }
+
+        if (element.tagName === "CustomEmoji" && typeof properties.url === "string") {
+            const resolved = new URL(properties.url, "https://cohost.org/");
+            if (resources.includes(resolved.href)) {
+                properties = { ...properties, url: makeResourceURL(resolved.href) };
+            }
+        }
+
+        return {
+            ...element,
+            properties,
+            children: element.children.map((child) => rewriteHast(child, resources)),
+        } as Node as N;
+    }
+
+    if ("children" in node) {
+        const parent = node as Parent;
+        return {
+            ...parent,
+            children: parent.children.map((child) => rewriteHast(child, resources)),
+        } as Node as N;
+    }
+
+    return node;
+}
+
 export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
     const blocks = [];
     for (const block of args.blocks) {
         if (block.type === "ask") {
-            blocks.push(block);
+            blocks.push(rewriteAsk(block, args.resources));
         } else if (block.type === "attachment") {
             blocks.push(rewriteAttachment(block, args.resources));
         } else if (block.type === "attachment-row") {
@@ -75,12 +219,16 @@ export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
         }
     }
 
-    // TODO: process post blocks & AST
-
     const postAst = await generatePostAst(blocks, new Date(args.publishedAt), {
         hasCohostPlus: args.hasCohostPlus,
         renderingContext: "post",
     });
+
+    for (const span of postAst.spans) {
+        let ast: Root = JSON.parse(span.ast);
+        ast = rewriteHast(ast, args.resources);
+        span.ast = JSON.stringify(ast);
+    }
 
     const ruleset = chooseAgeRuleset(new Date(args.publishedAt));
     const hasReadMore = postAst.readMoreIndex !== null;
@@ -113,6 +261,10 @@ export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
     return { preview, full, className: ruleset.className };
 }
 
+function rewriteHastPlugin(resources: string[]) {
+    return () => (tree: Root) => rewriteHast(tree, resources);
+}
+
 export function renderMarkdown(args: MarkdownRenderRequest): MarkdownResult {
     const rendered = renderMarkdownReactNoHTML(args.markdown, new Date(args.publishedAt), {
         renderingContext: args.context,
@@ -122,5 +274,20 @@ export function renderMarkdown(args: MarkdownRenderRequest): MarkdownResult {
     });
     const html = renderToString(rendered);
 
-    return { html };
+    // this is inefficient, but it's probably fine
+    const rewrittenTree = unified()
+        .use(rehypeRaw)
+        .use(rewriteHastPlugin(args.resources))
+        .runSync({
+            type: "root",
+            children: [
+                { type: "raw", value: html } as Raw,
+            ],
+        } as Root) as Root;
+
+    const html2 = unified()
+        .use(rehypeStringify)
+        .stringify(rewrittenTree);
+
+    return { html: html2 };
 }

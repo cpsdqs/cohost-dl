@@ -78,6 +78,7 @@ export default {
             entries: [
                 { find: 'stream', replacement: 'readable-stream' },
                 { find: 'util', replacement: path.join(dirname, 'src', 'patch_util.js') },
+                { find: 'css-tree', replacement: path.join(dirname, 'node_modules', 'css-tree', 'dist', 'csstree.esm.js') },
             ]
         }),
         typescript(),
