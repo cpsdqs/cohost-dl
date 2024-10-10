@@ -193,7 +193,7 @@ index 52e3245..baaf3ea 100644
  export const Ask: FunctionComponent<{
      askBlock: AskViewBlock;
 diff --git a/preact/components/posts/blocks/attachments/audio.tsx b/preact/components/posts/blocks/attachments/audio.tsx
-index 1ab442f..8aa0c8f 100644
+index 1ab442f..4cd0637 100644
 --- a/preact/components/posts/blocks/attachments/audio.tsx
 +++ b/preact/components/posts/blocks/attachments/audio.tsx
 @@ -1,9 +1,9 @@
@@ -210,6 +210,15 @@ index 1ab442f..8aa0c8f 100644
  import { BlockComponent } from "../attachment";
  
  export const AudioAttachment: BlockComponent<AttachmentViewBlock> = ({
+@@ -12,7 +12,7 @@ export const AudioAttachment: BlockComponent<AttachmentViewBlock> = ({
+     const audio = useRef<HTMLAudioElement>(null);
+ 
+     const displayTitle = useMemo(() => {
+-        const pathEntries = new URL(block.attachment.fileURL).pathname.split(
++        const pathEntries = new URL(block.attachment.fileURL, 'https://cohost.org/').pathname.split(
+             "/"
+         );
+         let displayTitle = pathEntries[pathEntries.length - 1];
 diff --git a/preact/components/posts/blocks/attachments/image.tsx b/preact/components/posts/blocks/attachments/image.tsx
 index b486d22..1686b3c 100644
 --- a/preact/components/posts/blocks/attachments/image.tsx

@@ -289,6 +289,19 @@ impl Database {
         Ok(projects.filter(handle.eq(project_handle)).first(db)?)
     }
 
+    pub async fn project_id_for_handle(&self, project_handle: &str) -> QueryResult<u64> {
+        use crate::schema::projects::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i32 = projects
+            .filter(handle.eq(project_handle))
+            .select(id)
+            .first(db)?;
+        Ok(result as u64)
+    }
+
     pub async fn has_project_handle(&self, project_handle: &str) -> anyhow::Result<bool> {
         use crate::schema::projects::dsl::*;
         let mut db = self.db.lock().await;
@@ -444,6 +457,144 @@ impl Database {
             .filter(post_id.eq(the_post_id as i32))
             .order_by(published_at)
             .load(db)
+    }
+}
+
+#[derive(Debug)]
+pub struct PostQuery {
+    pub posting_project_id: Option<u64>,
+    pub share_of_post_id: Option<u64>,
+    pub is_liked_by: Option<u64>,
+    pub include_tags: Vec<String>,
+    pub exclude_tags: Vec<String>,
+    pub is_ask: Option<bool>,
+    pub is_adult: Option<bool>,
+    pub is_reply: Option<bool>,
+    pub is_share: Option<bool>,
+    pub is_pinned: Option<bool>,
+    pub offset: u64,
+    pub limit: u64,
+}
+
+impl Default for PostQuery {
+    fn default() -> Self {
+        Self {
+            posting_project_id: None,
+            share_of_post_id: None,
+            is_liked_by: None,
+            include_tags: Vec::new(),
+            exclude_tags: Vec::new(),
+            is_ask: None,
+            is_adult: None,
+            is_reply: None,
+            is_share: None,
+            is_pinned: None,
+            offset: 0,
+            limit: 20,
+        }
+    }
+}
+
+impl PostQuery {
+    fn build(
+        &self,
+    ) -> diesel::internal::table_macro::BoxedSelectStatement<
+        diesel::sql_types::Integer,
+        diesel::internal::table_macro::FromClause<crate::schema::posts::table>,
+        diesel::sqlite::Sqlite,
+    > {
+        use crate::schema::likes::dsl as likes;
+        use crate::schema::post_tags::dsl as tags;
+        use crate::schema::posts::dsl as posts;
+
+        let mut query = posts::posts
+            .order_by(posts::published_at.desc())
+            .into_boxed();
+
+        if let Some(posting_project_id) = self.posting_project_id {
+            query = query.filter(posts::posting_project_id.eq(posting_project_id as i32));
+        }
+        if let Some(share_of_post_id) = self.share_of_post_id {
+            query = query.filter(posts::share_of_post_id.eq(share_of_post_id as i32));
+        }
+
+        if !self.include_tags.is_empty() {
+            let tagged_posts = tags::post_tags
+                .filter(tags::tag.eq_any(self.include_tags.clone()))
+                .filter(tags::tag.ne_all(self.exclude_tags.clone()))
+                .select(tags::post_id);
+
+            query = query.filter(posts::id.eq_any(tagged_posts));
+        } else if !self.exclude_tags.is_empty() {
+            let tagged_posts = tags::post_tags
+                .filter(tags::tag.ne_all(self.exclude_tags.clone()))
+                .select(tags::post_id);
+
+            query = query.filter(posts::id.eq_any(tagged_posts));
+        }
+
+        if let Some(is_liked_by) = self.is_liked_by {
+            let likes = likes::likes
+                .filter(likes::from_project_id.eq(is_liked_by as i32))
+                .select(likes::to_post_id);
+            query = query.filter(posts::id.eq_any(likes));
+        }
+
+        if let Some(is_ask) = self.is_ask {
+            if is_ask {
+                query = query.filter(posts::response_to_ask_id.is_not_null());
+            } else {
+                query = query.filter(posts::response_to_ask_id.is_null());
+            }
+        }
+
+        if let Some(is_reply) = self.is_reply {
+            if is_reply {
+                query = query
+                    .filter(posts::is_transparent_share.eq(false))
+                    .filter(posts::share_of_post_id.is_not_null());
+            } else {
+                query = query.filter(
+                    posts::is_transparent_share
+                        .eq(true)
+                        .or(posts::share_of_post_id.is_null()),
+                );
+            }
+        }
+
+        if let Some(is_share) = self.is_share {
+            query = query.filter(posts::is_transparent_share.eq(is_share));
+        }
+
+        if let Some(is_adult) = self.is_adult {
+            // TODO: requires data...
+        }
+        if let Some(is_pinned) = self.is_pinned {
+            // TODO: requires data...
+        }
+
+        query.select(posts::id)
+    }
+
+    pub async fn get(&self, db: &Database) -> QueryResult<Vec<u64>> {
+        let mut db = db.db.lock().await;
+        let db = &mut *db;
+        let items: Vec<i32> = self
+            .build()
+            .offset(self.offset as i64)
+            .limit((self.limit as i64).min(100))
+            .load(db)?;
+        Ok(items.into_iter().map(|i| i as u64).collect())
+    }
+
+    pub async fn count(&self, db: &Database) -> QueryResult<u64> {
+        let mut db = db.db.lock().await;
+        let db = &mut *db;
+        let count: i64 = self
+            .build()
+            .count()
+            .get_result(db)?;
+        Ok(count as u64)
     }
 }
 

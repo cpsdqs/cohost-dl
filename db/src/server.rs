@@ -19,6 +19,7 @@ use std::time::SystemTime;
 use thiserror::Error;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
+use crate::render::project_profile::ProjectProfileQuery;
 
 pub struct ServerState {
     db: Database,
@@ -33,6 +34,7 @@ pub async fn serve(config: Config, db: SqliteConnection) {
 
     let routes = Router::new()
         .route("/:project/post/:post", get(get_single_post))
+        .route("/:project", get(get_profile))
         .route("/api/post/:post", get(api_get_post))
         .route("/resource", get(get_resource))
         .route("/static/:file", get(get_static))
@@ -102,6 +104,24 @@ async fn get_single_post(
     let body = state
         .page_renderer
         .render_single_post(&state.db, &project, &post)
+        .await
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_profile(
+    State(state): State<SharedServerState>,
+    Path(project): Path<String>,
+    Query(query): Query<ProjectProfileQuery>,
+) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_project_profile(&state.db, &project, query)
         .await
         .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
 

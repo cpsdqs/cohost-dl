@@ -4,6 +4,8 @@ use tera::{Context, Tera};
 pub mod api_data;
 pub mod md_render;
 pub mod single_post;
+pub mod project_profile;
+pub mod rewrite;
 
 pub struct PageRenderer {
     tera: Tera,

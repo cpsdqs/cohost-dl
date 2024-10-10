@@ -103,13 +103,23 @@ function rewriteAsk(ask: AskViewBlock, resources: string[]): AskViewBlock {
         }
 
         return { ...ask, ask: { ...ask.ask, askingProject, content } } as AskViewBlock;
+    } else {
+        // this is null, but zod wants it to be undefined
+        ask.ask.askingProject = undefined;
     }
 
     return { ...ask, ask: { ...ask.ask, content } } as AskViewBlock;
 }
 
 function rewriteAttachment(attachment: AttachmentViewBlock, resources: string[]): AttachmentViewBlock {
-    let inner = { ...attachment.attachment };
+    let inner = {
+        ...attachment.attachment,
+        // altText is apparently required, but some older posts contain null
+        altText: attachment.attachment.altText ?? '',
+        // this field was missing in an earlier version. it's not that important though
+        attachmentId: attachment.attachment.attachmentId
+            ?? attachment.attachment.fileURL.split('/').find(p => p.match(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)),
+    };
 
     if (resources.includes(inner.fileURL)) {
         inner.fileURL = makeResourceURL(inner.fileURL);

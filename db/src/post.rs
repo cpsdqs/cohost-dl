@@ -131,6 +131,7 @@ pub enum PostBlockAttachment {
     },
     #[serde(rename_all = "camelCase")]
     Audio {
+        attachment_id: Option<String>,
         artist: Option<String>,
         title: Option<String>,
         #[serde(rename = "previewURL")]

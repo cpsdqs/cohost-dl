@@ -1131,7 +1131,7 @@ body {
 
     > .page-contents {
         order: 3;
-        margin-bottom: 5rem;
+        margin-bottom: 4rem;
     }
 }
 
@@ -1411,6 +1411,52 @@ body {
     display: grid;
     gap: 0.5rem 1.5rem;
     grid-template-columns: 100%;
+}
+
+.project-profile-filters {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+
+    > .i-filter {
+        display: flex;
+        align-items: center;
+        width: fit-content;
+        background: rgb(var(--color-foreground-300));
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        line-height: 1;
+        text-align: center;
+
+        > .i-state {
+            padding: 0.5rem;
+            border-radius: inherit;
+            color: rgb(var(--color-foreground-700));
+        }
+
+        &[data-state="false"] > .i-state:first-child,
+        &[data-state="true"] > .i-state:last-child {
+            background: rgb(var(--color-cherry));
+            color: rgb(var(--color-notWhite));
+            font-weight: bold;
+        }
+    }
+}
+
+@media (min-width: 768px) {
+    .project-profile-filters > .i-filter {
+        > .i-state {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+    }
+}
+
+.project-profile-posts {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 
 .co-post-box {
@@ -1746,33 +1792,77 @@ body {
     color: rgb(var(--color-notBlack));
     background: rgb(var(--color-notWhite));
     border: 1px solid rgb(var(--color-strawberry));
-
-    /* used by cohost renderer output */
-    .flex-0 { flex: 0; }
-    .w-8 { width: 2rem; }
-    .w-full { width: 100%; }
-    .h-8 { width: 2rem; }
-    .h-full { width: 100%; }
-    .aspect-square { aspect-ratio: 1 / 1; }
-    .col-start-1 { grid-column-start: 1; }
-    .col-start-2 { grid-column-start: 2; }
-    .row-start-1 { grid-row-start: 1; }
-    .row-start-2 { grid-row-start: 2; }
-    .align-middle { vertical-align: middle; }
-    .leading-8 { line-height: 2rem; }
-    .relative { position: relative; }
-    .font-bold { font-weight: bold; }
-    .hover\:underline:hover { text-decoration: underline; }
-    .object-cover { object-fit: cover; }
-    .mask {
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-    }
 }
 
 .co-attribution {
     color: rgb(130 127 124);
+}
+
+.co-pagination-eggs {
+    max-width: 65ch;
+    margin-bottom: 3rem;
+    display: flex;
+    gap: 1.5rem;
+
+    > .i-button > .i-egg {
+        mask-repeat: no-repeat;
+        mask-size: contain;
+        mask-image: url(de7a6730ae8672a12406.svg);
+        background: rgb(var(--color-secondary));
+        color: rgb(var(--color-notWhite));
+        height: 2rem;
+        aspect-ratio: 25 / 18;
+        display: grid;
+        place-content: center;
+
+        > .i-arrow {
+            transform: scale(1.0673625);
+        }
+    }
+
+    > .i-button {
+        &.is-prev {
+            margin-left: 0.75rem;
+
+            > .i-egg {
+                transform: scaleX(-1);
+            }
+        }
+
+        &.is-next {
+            margin-right: 0.75rem;
+        }
+    }
+
+    > .i-spacer {
+        flex: 1;
+    }
+}
+
+/* used by cohost renderer output */
+.flex-0 { flex: 0; }
+.w-8 { width: 2rem; }
+.w-full { width: 100%; }
+.h-8 { width: 2rem; }
+.h-full { width: 100%; }
+.aspect-square { aspect-ratio: 1 / 1; }
+.col-start-1 { grid-column-start: 1; }
+.col-start-2 { grid-column-start: 2; }
+.row-start-1 { grid-row-start: 1; }
+.row-start-2 { grid-row-start: 2; }
+.align-middle { vertical-align: middle; }
+.leading-8 { line-height: 2rem; }
+.relative { position: relative; }
+.font-bold { font-weight: bold; }
+.hover\:underline:hover { text-decoration: underline; }
+.object-cover { object-fit: cover; }
+.\!font-bold { font-weight: bold !important; }
+.\!no-underline { text-decoration: none !important; }
+.hover\:\!underline:hover { text-decoration: underline !important; }
+.mask {
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
 }
 
 @media (prefers-color-scheme: dark) {

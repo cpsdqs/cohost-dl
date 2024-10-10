@@ -1,0 +1,70 @@
+{% import "project_sidebar.html" as project_sidebar %}
+{% import "post.html" as post %}
+{% import "comments.html" as comments %}
+{% extends "base.html" %}
+
+{% block title %}
+cohost archive! - {{ project.handle }}
+{% endblock title %}
+
+{% block base_header %}
+{% if project.headerURL %}
+<img
+    class="profile-header-image co-container"
+    src="{{ project.headerURL }}"
+    alt=""
+    role="presentation"
+/>
+{% endif %}
+{% endblock base_header %}
+
+{% block base_contents %}
+{{ project_sidebar::project_sidebar(project = project, description = rendered_project_description) }}
+
+<div class="page-contents">
+    <div class="project-profile-filters">
+        {% set b = "/" ~ project.handle -%}
+        <div class="i-filter" data-state="{{ filter_state.query.hideShares }}">
+            <a class="i-state" href="{{ b ~ filter_state.onShowShares }}">show shares</a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideShares }}">hide shares</a>
+        </div>
+        <div class="i-filter" data-state="{{ filter_state.query.hideReplies }}">
+            <a class="i-state" href="{{ b ~ filter_state.onShowReplies }}">show replies</a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideReplies }}">hide replies</a>
+        </div>
+        <div class="i-filter" data-state="{{ filter_state.query.hideAsks }}">
+            <a class="i-state" href="{{ b ~ filter_state.onShowAsks }}">show asks</a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideAsks }}">hide asks</a>
+        </div>
+    </div>
+    <div class="project-profile-posts">
+        {% for post in posts %}
+        {{ post::render(post = post, expand = false) }}
+        {% endfor %}
+
+        <nav class="co-pagination-eggs">
+            {% if filter_state.onPrevPage %}
+            <a class="i-button is-prev co-drop-shadow" href="{{ b ~ filter_state.onPrevPage }}" aria-label="previous page">
+                <div class="i-egg">
+                    <svg class="i-arrow" width="24" height="24">
+                        <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    </svg>
+                </div>
+            </a>
+            {% endif %}
+            <span class="i-spacer"></span>
+            {% if filter_state.onNextPage %}
+            <a class="i-button is-next co-drop-shadow" href="{{ b ~ filter_state.onNextPage }}" aria-label="next page">
+                <div class="i-egg">
+                    <svg class="i-arrow" width="24" height="24">
+                        <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    </svg>
+                </div>
+            </a>
+            {% endif %}
+        </nav>
+    </div>
+</div>
+
+{{ project_sidebar::project_sidebar_alt(project = project) }}
+{% endblock base_contents %}
