@@ -487,10 +487,6 @@ impl CohostContext {
         state: &Mutex<CurrentStateV1>,
         loaded: Option<&mut bool>,
     ) -> Result<Option<PathBuf>, LoadResError> {
-        if let Some(result) = self.get_url_file(&url).await? {
-            return Ok(Some(result));
-        }
-
         if state.lock().await.failed_urls.contains(&url.to_string()) {
             return Ok(None);
         }
@@ -504,12 +500,18 @@ impl CohostContext {
 
         let needs_file_extension = !props.skip_file_ext_check
             && does_resource_probably_need_a_file_extension(&props.file_path);
+        let mut needs_content_type = false;
 
         let file_path_with_ext = if needs_file_extension {
             let content_type = self
                 .get_res_content_type(&props.fetch)
                 .await
                 .map_err(|e| LoadResError::Unknown(e.into()))?;
+
+            if content_type.is_none() {
+                needs_content_type = true;
+            }
+
             Self::add_content_type_ext(
                 props.file_path.clone(),
                 &content_type.unwrap_or_default(),
@@ -519,7 +521,13 @@ impl CohostContext {
             props.file_path.clone()
         };
 
-        if fs::exists(&file_path_with_ext)? {
+        if !needs_content_type {
+            if let Some(result) = self.get_url_file(&url).await? {
+                return Ok(Some(result));
+            }
+        }
+
+        if fs::exists(&file_path_with_ext)? && !needs_content_type {
             let result_file_path = file_path_with_ext
                 .strip_prefix(&self.root_dir)
                 .context("getting relative path")

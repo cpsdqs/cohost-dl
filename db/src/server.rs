@@ -168,7 +168,7 @@ async fn get_static(
         }
     };
 
-    serve_static(&state, resolved_path, metadata, &headers).await
+    serve_static(&state, resolved_path, metadata, &headers, None).await
 }
 
 #[derive(Deserialize)]
@@ -224,7 +224,26 @@ async fn get_resource(
         }
     };
 
-    serve_static(&state, resolved_path, metadata, &headers).await
+    let content_type = match state.db.get_res_content_type(&url).await {
+        Ok(content_type) => content_type,
+        Err(e) => {
+            error!("failed to look up content type: {e}");
+            return render_error_page(
+                &state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to look up content type".into(),
+            );
+        }
+    };
+
+    serve_static(
+        &state,
+        resolved_path,
+        metadata,
+        &headers,
+        content_type.as_deref(),
+    )
+    .await
 }
 
 async fn serve_static(
@@ -232,6 +251,7 @@ async fn serve_static(
     resolved_path: PathBuf,
     metadata: std::fs::Metadata,
     headers: &HeaderMap,
+    content_type: Option<&str>,
 ) -> Response {
     let etag = if let Ok(mtime) = metadata.modified() {
         let mut etag = Sha256::new();
@@ -293,24 +313,28 @@ async fn serve_static(
         );
     }
 
-    let file_ext = resolved_path.extension().map(|e| e.to_string_lossy());
-    let content_type = match file_ext.as_deref() {
-        Some("avif") => "image/avif",
-        Some("css") => "text/css; charset=utf-8",
-        Some("gif") => "image/gif",
-        Some("html") => "text/html; charset=utf-8",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("js") => "application/javascript; charset=utf-8",
-        Some("jxl") => "image/jxl",
-        Some("m4a") => "audio/mp4",
-        Some("mp3") => "audio/mp3",
-        Some("png") => "image/png",
-        Some("svg") => "image/svg+xml",
-        Some("wav") => "audio/wav",
-        Some("webp") => "image/webp",
-        Some("woff") => "font/woff",
-        Some("woff2") => "font/woff2",
-        _ => "application/octet-stream",
+    let content_type = if let Some(ty) = content_type {
+        ty
+    } else {
+        let file_ext = resolved_path.extension().map(|e| e.to_string_lossy());
+        match file_ext.as_deref() {
+            Some("avif") => "image/avif",
+            Some("css") => "text/css; charset=utf-8",
+            Some("gif") => "image/gif",
+            Some("html") => "text/html; charset=utf-8",
+            Some("jpg" | "jpeg") => "image/jpeg",
+            Some("js") => "application/javascript; charset=utf-8",
+            Some("jxl") => "image/jxl",
+            Some("m4a") => "audio/mp4",
+            Some("mp3") => "audio/mp3",
+            Some("png") => "image/png",
+            Some("svg") => "image/svg+xml",
+            Some("wav") => "audio/wav",
+            Some("webp") => "image/webp",
+            Some("woff") => "font/woff",
+            Some("woff2") => "font/woff2",
+            _ => "application/octet-stream",
+        }
     };
     response
         .headers_mut()
