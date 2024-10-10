@@ -1,5 +1,6 @@
 use crate::data::Database;
 use crate::render::api_data::{cohost_api_post, GetDataError};
+use crate::render::project_profile::ProjectProfileQuery;
 use crate::render::PageRenderer;
 use crate::Config;
 use axum::body::Body;
@@ -19,7 +20,6 @@ use std::time::SystemTime;
 use thiserror::Error;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use crate::render::project_profile::ProjectProfileQuery;
 
 pub struct ServerState {
     db: Database,
@@ -39,6 +39,7 @@ pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce(
         .route("/api/post/:post", get(api_get_post))
         .route("/resource", get(get_resource))
         .route("/static/:file", get(get_static))
+        .route("/", get(get_index))
         .with_state(Arc::new(ServerState {
             db,
             root_dir: PathBuf::from(config.root_dir),
@@ -144,6 +145,22 @@ async fn get_profile_tagged(
         .render_project_profile(&state.db, &project, query, Some(tag))
         .await
         .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_index(State(state): State<SharedServerState>) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_index_page(&state.db)
+        .await
+        .map_err(|e| {
+            render_error_page(&state, StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+        })?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)

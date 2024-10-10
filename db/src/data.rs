@@ -313,6 +313,19 @@ impl Database {
             .get_result(db)?;
         Ok(count > 0)
     }
+
+    pub async fn get_all_project_handles_with_posts(&self) -> QueryResult<Vec<String>> {
+        use crate::schema::posts::dsl as posts;
+        use crate::schema::projects::dsl as projects;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        projects::projects
+            .filter(projects::id.eq_any(posts::posts.select(posts::posting_project_id)))
+            .order_by(projects::handle)
+            .select(projects::handle)
+            .load(db)
+    }
 }
 
 /// Post queries
@@ -956,7 +969,9 @@ impl Database {
         let mut infer_share_post_from_tree = false;
 
         if let Some(share_post) = post.share_of_post_id {
-            if !self.has_post(share_post).await? || self.is_bad_transparent_share(share_post).await? {
+            if !self.has_post(share_post).await?
+                || self.is_bad_transparent_share(share_post).await?
+            {
                 if is_share_post {
                     // this scenario happens here:
                     // - transparent share
@@ -1034,8 +1049,7 @@ impl Database {
             } else {
                 error!(
                     "bizarre mystery scenario: post {}/{} is a share of nothing at all\n",
-                    post.posting_project.handle,
-                    post.post_id,
+                    post.posting_project.handle, post.post_id,
                 );
                 None
             }

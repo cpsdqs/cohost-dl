@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}
+cohost archive!
+{% endblock title %}
+
+{% block base_contents %}
+<div class="page-contents">
+    <h1>cohost-dl temporary index page</h1>
+    <ul>
+        {% for project in projects %}
+        <li>
+            <a href="/{{ project }}">@{{ project }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock base_contents %}
