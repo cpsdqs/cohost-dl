@@ -114,11 +114,12 @@
             Pinned Tags
         </div>
         <div class="i-contents">
-            <ul>
+            <ul class="i-tag-list">
                 {% for tag in project.frequentlyUsedTags %}
                 <li>
-                    TODO
-                    {{ tag }}
+                    <a class="co-tag-button" href="/{{ project.handle }}/tagged/{{ tag | urlencode }}">
+                        {{ tag }}
+                    </a>
                 </li>
                 {% endfor %}
             </ul>

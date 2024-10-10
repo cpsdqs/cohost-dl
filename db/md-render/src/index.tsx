@@ -190,9 +190,16 @@ function rewriteHast<N extends Node>(node: N, resources: string[]): N {
 
         if (element.tagName === "CustomEmoji" && typeof properties.url === "string") {
             const resolved = new URL(properties.url, "https://cohost.org/");
-            if (resources.includes(resolved.href)) {
-                properties = { ...properties, url: makeResourceURL(resolved.href) };
+            if (resolved.hostname === "cohost.org" && resolved.pathname.startsWith('/static')) {
+                properties = { ...properties, url: resolved.pathname };
             }
+        }
+
+        if (properties.dataTestid == "mention" && typeof properties.href === "string") {
+            properties = {
+                ...properties,
+                href: new URL(properties.href, "https://cohost.org").pathname,
+            };
         }
 
         return {

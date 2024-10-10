@@ -1,7 +1,7 @@
 use crate::data::{Database, PostQuery};
 use crate::render::api_data::{cohost_api_post, cohost_api_project, GetDataError};
 use crate::render::md_render::{MarkdownRenderContext, MarkdownRenderRequest, PostRenderRequest};
-use crate::render::rewrite::rewrite_project;
+use crate::render::rewrite::{rewrite_project, rewrite_projects_in_post};
 use crate::render::PageRenderer;
 use axum::http::StatusCode;
 use chrono::Utc;
@@ -125,6 +125,7 @@ impl PageRenderer {
         db: &Database,
         project_handle: &str,
         query: ProjectProfileQuery,
+        tagged: Option<String>,
     ) -> Result<String, RenderProjectProfileError> {
         let project_id = db
             .project_id_for_handle(project_handle)
@@ -163,6 +164,7 @@ impl PageRenderer {
             posting_project_id: Some(project_id),
             offset: query.page.unwrap_or_default() * 20,
             limit: 20,
+            include_tags: tagged.iter().cloned().collect(),
             is_share: if query.hide_shares { Some(false) } else { None },
             is_reply: if query.hide_replies {
                 Some(false)
@@ -189,7 +191,7 @@ impl PageRenderer {
         let mut rendered_posts = HashMap::with_capacity(post_ids.len());
 
         for post in post_ids {
-            let post = cohost_api_post(db, 0, post)
+            let mut post = cohost_api_post(db, 0, post)
                 .await
                 .map_err(|e| RenderProjectProfileError::GetPost(post, e))?;
 
@@ -216,6 +218,10 @@ impl PageRenderer {
                 rendered_posts.insert(post.post_id, result);
             }
 
+            rewrite_projects_in_post(db, &mut post)
+                .await
+                .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
+
             posts.push(post);
         }
 
@@ -228,6 +234,10 @@ impl PageRenderer {
         template_ctx.insert("posts", &posts);
         template_ctx.insert("rendered_posts", &rendered_posts);
         template_ctx.insert("filter_state", &query.to_filter_state(max_page));
+
+        if let Some(tag) = tagged {
+            template_ctx.insert("tagged", &tag);
+        }
 
         let body = self
             .tera

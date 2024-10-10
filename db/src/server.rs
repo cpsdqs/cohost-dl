@@ -35,6 +35,7 @@ pub async fn serve(config: Config, db: SqliteConnection) {
     let routes = Router::new()
         .route("/:project/post/:post", get(get_single_post))
         .route("/:project", get(get_profile))
+        .route("/:project/tagged/:tag", get(get_profile_tagged))
         .route("/api/post/:post", get(api_get_post))
         .route("/resource", get(get_resource))
         .route("/static/:file", get(get_static))
@@ -121,7 +122,25 @@ async fn get_profile(
 ) -> response::Result<Response> {
     let body = state
         .page_renderer
-        .render_project_profile(&state.db, &project, query)
+        .render_project_profile(&state.db, &project, query, None)
+        .await
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_profile_tagged(
+    State(state): State<SharedServerState>,
+    Path((project, tag)): Path<(String, String)>,
+    Query(query): Query<ProjectProfileQuery>,
+) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_project_profile(&state.db, &project, query, Some(tag))
         .await
         .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
 

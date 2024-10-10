@@ -1018,6 +1018,48 @@ select::placeholder {
     pointer-events: auto;
 }
 
+/* cohost animations */
+@keyframes slideupright {
+    0% {
+        transform: scale(0);
+        transform-origin: bottom right;
+    }
+    100% {
+        transform: scale(1);
+        transform-origin: bottom right;
+    }
+}
+@keyframes slideupleft {
+    0% {
+        transform: scale(0);
+        transform-origin: bottom left;
+    }
+    100% {
+        transform: scale(1);
+        transform-origin: bottom left;
+    }
+}
+
+@keyframes bounce {
+    0%,
+    100% {
+        transform: translateY(-25%);
+        animation-timing-function: cubic-bezier(0.8, 0, 1, 1)
+    }
+    50% {
+        transform: none;
+        animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+}
+
 /* page styles */
 * {
     -webkit-font-smoothing: antialiased;
@@ -1397,6 +1439,13 @@ body {
     flex-direction: column;
     gap: 1.25rem;
     order: 2;
+
+    .i-tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 0.625rem;
+    }
 }
 
 @media (min-width: 1024px) {
@@ -1449,6 +1498,27 @@ body {
             padding-left: 0.75rem;
             padding-right: 0.75rem;
         }
+    }
+}
+
+.project-profile-tagged-header {
+    margin-top: 1rem;
+    margin-bottom: 3rem;
+
+    > h4 {
+        font-size: 2.25rem;
+        line-height: 2.5rem;
+        font-weight: bold;
+    }
+    > h6 {
+        font-family: League Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.5rem;
+        letter-spacing: -0.05em;
+    }
+    .i-from-all-pages {
+        text-decoration: underline;
     }
 }
 
@@ -1637,6 +1707,11 @@ body {
                 text-decoration: underline;
             }
         }
+    }
+
+    /* fix animations not playing when opening details */
+    & details:not([open]) > :not(summary) {
+        display: none;
     }
 }
 
@@ -1836,6 +1911,33 @@ body {
 
     > .i-spacer {
         flex: 1;
+    }
+}
+
+.co-tag-button {
+    display: flex;
+    align-items: center;
+    justify-content: start;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    background: rgb(var(--color-cherry));
+    color: rgb(var(--color-notWhite));
+    -webkit-user-select: none;
+    user-select: none;
+
+    &:hover {
+        background: rgb(var(--color-foreground-700));
+    }
+
+    &::before {
+        content: '';
+        width: 0.875rem;
+        height: 0.875rem;
+        mask-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.493 2.853a.75.75 0 0 0-1.486-.205L7.545 6H4.198a.75.75 0 0 0 0 1.5h3.14l-.69 5H3.302a.75.75 0 0 0 0 1.5h3.14l-.435 3.148a.75.75 0 0 0 1.486.205L7.955 14h2.986l-.434 3.148a.75.75 0 0 0 1.486.205L12.456 14h3.346a.75.75 0 0 0 0-1.5h-3.14l.69-5h3.346a.75.75 0 0 0 0-1.5h-3.14l.435-3.147a.75.75 0 0 0-1.486-.205L12.045 6H9.059l.434-3.147zM8.852 7.5l-.69 5h2.986l.69-5H8.852z"/></svg>');
+        mask-size: contain;
+        background: currentColor;
     }
 }
 

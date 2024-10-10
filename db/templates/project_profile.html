@@ -22,8 +22,20 @@ cohost archive! - {{ project.handle }}
 {{ project_sidebar::project_sidebar(project = project, description = rendered_project_description) }}
 
 <div class="page-contents">
+    {% set b = "/" ~ project.handle -%}
+    {% if tagged %}
+    {% set_global b = "/" ~ project.handle ~ "/tagged/" ~ tagged | urlencode -%}
+    <div class="project-profile-tagged-header">
+        <h4>posts from @{{ project.handle }} tagged #{{ tagged }}</h4>
+        <h6>also:</h6>
+        <div>
+            <a class="i-from-all-pages" href="/rc/tagged/{{ tagged }}">
+                view posts from all pages tagged #{{ tagged }}
+            </a>
+        </div>
+    </div>
+    {% else %}
     <div class="project-profile-filters">
-        {% set b = "/" ~ project.handle -%}
         <div class="i-filter" data-state="{{ filter_state.query.hideShares }}">
             <a class="i-state" href="{{ b ~ filter_state.onShowShares }}">show shares</a>
             <a class="i-state" href="{{ b ~ filter_state.onHideShares }}">hide shares</a>
@@ -37,6 +49,7 @@ cohost archive! - {{ project.handle }}
             <a class="i-state" href="{{ b ~ filter_state.onHideAsks }}">hide asks</a>
         </div>
     </div>
+    {% endif %}
     <div class="project-profile-posts">
         {% for post in posts %}
         {{ post::render(post = post, expand = false) }}
