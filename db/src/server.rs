@@ -29,7 +29,7 @@ pub struct ServerState {
 
 type SharedServerState = Arc<ServerState>;
 
-pub async fn serve(config: Config, db: SqliteConnection) {
+pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce()) {
     let db = Database::new(db);
 
     let routes = Router::new()
@@ -48,6 +48,7 @@ pub async fn serve(config: Config, db: SqliteConnection) {
     let bind_addr = format!("127.0.0.1:{}", config.server_port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
     info!("serving: http://{bind_addr}");
+    on_listen();
     axum::serve(listener, routes).await.unwrap();
 }
 

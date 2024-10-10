@@ -1,13 +1,19 @@
 # database file path
 database = "data.db"
 
-# see cohost-dl 1
-cookie = "connect.sid=adhjsakfahdsfjkash"
-
-# output directory.
+# file output directory. this will store lots of images and probably get very large.
+#
 # works similarly to cohost-dl 1 and is probably 99% compatible,
-# so you can point this at the cohost-dl 1 output directory to avoid having duplicate images
+# so you can point this at the cohost-dl 1 output directory to avoid having duplicate images.
 root_dir = "path/to/out"
+
+# Copy the cookie header from dev tools on cohost.org. This is used to log in, so don't share it.
+#
+# The page you’re currently logged into will be the point of view for cohost-dl data.
+# You probably shouldn’t switch pages in the browser while the script is running.
+# However, you can switch to different pages before running the script multiple times if you’d like
+# to e.g. download liked posts for your sideblogs as well!
+cookie = "connect.sid=adhjsakfahdsfjkash"
 
 # don't load external resources from these domains
 do_not_fetch_domains = [
@@ -15,7 +21,7 @@ do_not_fetch_domains = [
     'r0t.is', # Cohost runs Windows XP
 ]
 
-# load all posts from these projects
+# load all posts from these pages
 load_profile_posts = [
     'example-handle',
 ]
@@ -28,17 +34,17 @@ load_tagged_posts = [
 # load all posts from all followed projects
 load_dashboard = false
 
+# when loading the dashboard: ignore these particular pages
+skip_follows = [
+    'example-handle',
+]
+
 # load all liked posts for the currently active page
 load_likes = false
 
 # load new posts for all projects previously saved in full
 # (does not affect liked posts or bookmarked tags)
 load_new_posts = false
-
-# when loading the dashboard: ignore these particular projects
-skip_follows = [
-    'example-handle',
-]
 
 # load comments for all posts
 load_comments = false
@@ -57,7 +63,7 @@ load_project_resources = false
 load_comment_resources = false
 
 # how many seconds to wait before giving up on a request
-request_timeout_secs = 120
+request_timeout_secs = 60
 
-# port when running the web server
+# port when running the web server to look at the archive
 server_port = 26467

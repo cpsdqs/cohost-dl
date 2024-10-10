@@ -494,7 +494,7 @@ async fn fix_bad_transparent_shares(
     state: &Mutex<CurrentStateV1>,
     login: &LoginLoggedIn,
 ) -> anyhow::Result<()> {
-    let mut bad_transparent_shares = ctx.bad_transparent_shares().await?;
+    let bad_transparent_shares = ctx.bad_transparent_shares().await?;
 
     if bad_transparent_shares.is_empty() {
         return Ok(());

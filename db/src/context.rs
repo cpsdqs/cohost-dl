@@ -16,7 +16,7 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 
-const USER_AGENT: &str = "cohost-dl/2.0";
+pub const USER_AGENT: &str = "cohost-dl/2.0";
 const MAX_FILE_NAME_LENGTH_UTF8: usize = 250;
 
 pub struct CohostContext {
