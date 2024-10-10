@@ -17,7 +17,9 @@ Files:
 - downloader-state.json: file to remember what’s already been downloaded before and skip downloading those things (can be edited)
 
 ## WIP Usage
-Beware: this is super not finished. Downloading works; looking at posts, not really
+Beware: this is kinda unfinished
+
+> Note: if you have used cohost-dl 2 before, you should probably run it again with the `try_fix_transparent_shares` option.
 
 1. compile the post & markdown renderer. this is super jank. it currently requires running cohost-dl 1 as well
     - if ASSC ever ships an open source post renderer, this will be replaced with that

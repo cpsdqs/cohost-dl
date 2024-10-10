@@ -59,6 +59,8 @@ pub struct Config {
     #[serde(default)]
     pub load_comments: bool,
     #[serde(default)]
+    pub try_fix_transparent_shares: bool,
+    #[serde(default)]
     pub load_post_resources: bool,
     #[serde(default)]
     pub load_project_resources: bool,

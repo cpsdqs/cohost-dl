@@ -43,6 +43,10 @@ skip_follows = [
 # load comments for all posts
 load_comments = false
 
+# for existing cohost-dl downloads: will attempt to fix transparent shares that point at nothing.
+# use this if you see a post that seems to be a share of a post with no contents at all.
+try_fix_transparent_shares = false
+
 # load images and audio attachments in posts
 load_post_resources = false
 

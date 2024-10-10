@@ -386,6 +386,33 @@ impl Database {
         Ok(res_items)
     }
 
+    pub async fn bad_transparent_shares(&self) -> QueryResult<Vec<u64>> {
+        use crate::schema::posts::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        let items: Vec<i32> = posts
+            .filter(is_transparent_share.eq(true))
+            .filter(share_of_post_id.is_null())
+            .select(id)
+            .load(db)?;
+        Ok(items.into_iter().map(|i| i as u64).collect())
+    }
+
+    pub async fn is_bad_transparent_share(&self, post_id: u64) -> QueryResult<bool> {
+        use crate::schema::posts::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        let items: i64 = posts
+            .filter(is_transparent_share.eq(true))
+            .filter(share_of_post_id.is_null())
+            .filter(id.eq(post_id as i32))
+            .count()
+            .get_result(db)?;
+        Ok(items > 0)
+    }
+
     pub async fn all_shares_of_post(&self, post_id: u64) -> QueryResult<Vec<u64>> {
         use crate::schema::posts::dsl::*;
 
@@ -590,10 +617,7 @@ impl PostQuery {
     pub async fn count(&self, db: &Database) -> QueryResult<u64> {
         let mut db = db.db.lock().await;
         let db = &mut *db;
-        let count: i64 = self
-            .build()
-            .count()
-            .get_result(db)?;
+        let count: i64 = self.build().count().get_result(db)?;
         Ok(count as u64)
     }
 }
@@ -894,6 +918,7 @@ impl Database {
         login: &LoginLoggedIn,
         post: &PostFromCohost,
         is_share_post: bool,
+        maybe_share_of_post: Option<&PostFromCohost>,
     ) -> anyhow::Result<()> {
         trace!(
             "insert_post {} (ST: {} / S: {:?})",
@@ -902,8 +927,10 @@ impl Database {
             post.share_of_post_id
         );
 
-        for share_post in &post.share_tree {
-            self.insert_post(ctx, state, login, share_post, true)
+        for (i, share_post) in post.share_tree.iter().enumerate() {
+            let prev_post = i.checked_sub(1).and_then(|i| post.share_tree.get(i));
+
+            self.insert_post(ctx, state, login, share_post, true, prev_post)
                 .await
                 .with_context(|| {
                     format!(
@@ -929,7 +956,7 @@ impl Database {
         let mut infer_share_post_from_tree = false;
 
         if let Some(share_post) = post.share_of_post_id {
-            if !self.has_post(share_post).await? {
+            if !self.has_post(share_post).await? || self.is_bad_transparent_share(share_post).await? {
                 if is_share_post {
                     // this scenario happens here:
                     // - transparent share
@@ -958,7 +985,7 @@ impl Database {
                                 .await;
                         }
                         Err(err @ GetError::NotFound(..)) => {
-                            error!("could not load additional post due to 404. skipping!\n{err}");
+                            warn!("could not load additional post due to 404. skipping!\n{err}");
                         }
                         Err(e) => {
                             return Err(e).context(format!(
@@ -971,16 +998,17 @@ impl Database {
 
                 // this share post still isn't in the share tree.
                 // no idea what's going on here, but it does happen
-                error!("post {}/{} does not have its shared post {} in its share tree. replacing with last available post",
+                warn!("post {}/{} does not have its shared post {} in its share tree. replacing with last available post",
                         post.posting_project.handle,
                         post.filename,
                         share_post,
                     );
+
                 infer_share_post_from_tree = true;
             }
         }
 
-        self.insert_post_final(login, post, infer_share_post_from_tree)
+        self.insert_post_final(login, post, infer_share_post_from_tree, maybe_share_of_post)
             .await
     }
 
@@ -990,17 +1018,36 @@ impl Database {
         login: &LoginLoggedIn,
         post: &PostFromCohost,
         infer_share_post_from_tree: bool,
+        maybe_share_of_post: Option<&PostFromCohost>,
     ) -> anyhow::Result<()> {
         let shared_post_id = if infer_share_post_from_tree {
-            post.share_tree.last().map(|post| post.post_id)
+            let shared_post_id = post.share_tree.last().map(|post| post.post_id);
+            if let Some(shared) = shared_post_id {
+                Some(shared)
+            } else if let Some(maybe) = maybe_share_of_post {
+                // scenario:
+                // - actual post
+                // - share 1 <- ??? deleted probably
+                // - share 2 <- we are here, but cohost has omitted the entire share tree for some reason
+                // - share 3 <- we'll instead use the share tree from here
+                Some(maybe.post_id)
+            } else {
+                error!(
+                    "bizarre mystery scenario: post {}/{} is a share of nothing at all\n",
+                    post.posting_project.handle,
+                    post.post_id,
+                );
+                None
+            }
         } else {
             post.share_of_post_id
         };
 
         trace!(
-            "insert_post_final {} (S: {:?})",
+            "insert_post_final {} (S: {:?}, i: {:?})",
             post.post_id,
-            shared_post_id
+            shared_post_id,
+            infer_share_post_from_tree,
         );
 
         use crate::schema::likes::dsl::*;
@@ -1177,7 +1224,7 @@ impl Database {
     ) -> anyhow::Result<()> {
         trace!("insert_single_post {}", single_post.post.post_id);
 
-        self.insert_post(ctx, state, login, &single_post.post, false)
+        self.insert_post(ctx, state, login, &single_post.post, false, None)
             .await
             .with_context(|| {
                 format!(
