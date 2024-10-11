@@ -160,7 +160,8 @@ async fn load_likes(
         has_next = feed.pagination_mode.more_pages_forward;
 
         for post in &feed.posts {
-            ctx.insert_post(ctx, state, login, post, false, None).await?;
+            ctx.insert_post(ctx, state, login, post, false, None)
+                .await?;
         }
     }
 
@@ -217,7 +218,8 @@ async fn load_profile_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(ctx, state, login, post, false, None).await?;
+            ctx.insert_post(ctx, state, login, post, false, None)
+                .await?;
             count += 1;
         }
 
@@ -318,7 +320,8 @@ async fn load_tagged_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(ctx, state, login, post, false, None).await?;
+            ctx.insert_post(ctx, state, login, post, false, None)
+                .await?;
         }
 
         state
@@ -514,7 +517,9 @@ async fn fix_bad_transparent_shares(
 
         let mut was_maybe_fixed = false;
         while let Some(share) = shares.pop() {
-            progress.set_message(format!("fixing transparent share {post} (trying share {share})"));
+            progress.set_message(format!(
+                "fixing transparent share {post} (trying share {share})"
+            ));
 
             let (_, share_post_handle) = ctx.posting_project_handle(share).await?;
 
@@ -643,6 +648,39 @@ async fn par_load_resources<T: Send + Sync>(
 }
 
 const RESOURCE_LOAD_BATCH_SIZE: u64 = 5;
+
+async fn load_cohost_resources(
+    ctx: &CohostContext,
+    state: &Mutex<CurrentStateV1>,
+) -> anyhow::Result<()> {
+    // these are hard-coded because they are very unlikely to change
+    let files: Vec<_> = include_str!("../cohost_static.txt")
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    let progress = ProgressBar::new(files.len() as u64);
+    progress.set_style(long_progress_style());
+    progress.set_message("loading static files");
+
+    let loaded = Arc::new(AtomicU64::new(0));
+
+    for (i, chunk) in files.chunks(RESOURCE_LOAD_BATCH_SIZE as usize).enumerate() {
+        progress.set_position(i as u64 * RESOURCE_LOAD_BATCH_SIZE);
+        par_load_resources(ctx, state, &loaded, chunk, |url| url.to_string(), |url| url).await?;
+    }
+
+    progress.finish_and_clear();
+
+    let loaded = loaded.load(Ordering::Acquire);
+    if loaded == 1 {
+        info!("loaded 1 static file");
+    } else if loaded > 0 {
+        info!("loaded {loaded} static files");
+    }
+
+    Ok(())
+}
 
 async fn load_post_resources(
     ctx: &CohostContext,
@@ -975,6 +1013,8 @@ pub async fn download(config: Config, db: SqliteConnection) {
     }
 
     ok_or_quit(migrate_resource_file_paths(&ctx).await);
+
+    ok_or_quit(load_cohost_resources(&ctx, &state).await);
 
     if config.load_post_resources {
         ok_or_quit(load_post_resources(&ctx, &state).await);

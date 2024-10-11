@@ -47,10 +47,7 @@ where
         #[serde(rename = "result")]
         Result { data: T },
         #[serde(rename = "error")]
-        Error {
-            code: i64,
-            message: String,
-        },
+        Error { code: i64, message: String },
     }
 
     let result = res.text().await?;
@@ -112,7 +109,9 @@ pub async fn login(email: &str, password: &str) -> anyhow::Result<(String, bool)
         .await
         .context("getting salt")?;
 
-        BASE64_STANDARD_NO_PAD.decode(salt.salt).context("decoding salt")?
+        BASE64_STANDARD_NO_PAD
+            .decode(salt.salt)
+            .context("decoding salt")?
     };
 
     let hash = {

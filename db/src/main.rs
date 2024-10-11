@@ -480,7 +480,9 @@ async fn interactive_login() -> anyhow::Result<Option<String>> {
             return Ok(None);
         }
 
-        println!("Enter your Cohost login password. For security reasons, your input is invisible.");
+        println!(
+            "Enter your Cohost login password. For security reasons, your input is invisible."
+        );
         let password = rpassword::prompt_password("password: ")?;
 
         println!("Logging in...");
