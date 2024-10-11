@@ -146,13 +146,30 @@
     <hr class="co-hairline" />
     {{ post::co_thread_item(post = post, expand = false) }}
     {% endfor %}
-    {% if not post.transparentShareOfPostId %}
+    {% if post.transparentShareOfPostId %}
+    {% if post.tags | length %}
+    <hr class="co-hairline" />
+    <div class="i-transparent-share-tags">
+        <div class="i-header">
+            <a class="i-handle" href="/{{ post.postingProject.handle }}">@{{ post.postingProject.handle }}</a>
+            shared with:
+        </div>
+        <div class="i-tags">
+            {%- for tag in post.tags -%}
+            <a class="i-tag" href="/rc/tagged/{{ tag | urlencode_strict }}">
+                #{{tag}}
+            </a>
+            {%- endfor -%}
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
     <hr class="co-hairline" />
     {{ post::co_thread_item(post = post, expand = expand) }}
     {% endif %}
     {% else %}
     <hr class="co-hairline" />
-    <div id="post-{{ post.postId}}"></div>
+    <div id="post-{{ post.postId }}"></div>
     {{ post::co_post_contents(post = post, expand = expand) }}
     {% endif %}
 

@@ -1538,6 +1538,25 @@ body {
     overflow-x: auto;
     background: rgb(255 255 255);
     box-shadow: 0 4px 5px rgba(0, 0, 0, .14), 0 1px 10px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .2);
+
+    > .i-transparent-share-tags {
+        padding-top: 0.75rem;
+
+        > .i-header {
+            padding: 0 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+
+            > .i-handle {
+                font-weight: bold;
+
+                &:hover {
+                    text-decoration: underline;
+                }
+            }
+        }
+    }
 }
 
 .co-read-more-read-less {
@@ -1694,29 +1713,30 @@ body {
         }
     }
 
-    > .i-tags {
-        padding: 0.75rem;
-        line-height: 1;
-        overflow-wrap: break-word;
-        overflow-y: hidden;
-        color: rgb(104 102 100);
-
-        > .i-tag {
-            display: inline-block;
-            font-size: 0.875rem;
-            line-height: 1.25rem;
-            margin-right: 0.5rem;
-
-            &:hover {
-                text-decoration: underline;
-            }
-        }
-    }
-
     /* fix animations not playing when opening details */
 
     & details:not([open]) > :not(summary) {
         display: none;
+    }
+}
+
+.co-post-contents > .i-tags,
+.co-post-box > .i-transparent-share-tags > .i-tags {
+    padding: 0.75rem;
+    line-height: 1;
+    overflow-wrap: break-word;
+    overflow-y: hidden;
+    color: rgb(104 102 100);
+
+    > .i-tag {
+        display: inline-block;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        margin-right: 0.5rem;
+
+        &:hover {
+            text-decoration: underline;
+        }
     }
 }
 
@@ -1953,7 +1973,7 @@ body {
 }
 
 /* used by cohost renderer output */
-.co-post-contents {
+.co-post-contents, .prose, .prose-stone {
     .relative {
         position: relative;
     }
@@ -2193,7 +2213,8 @@ body {
         border-color: rgb(74 72 71);
     }
 
-    .co-post-contents > .i-tags {
+    .co-post-contents > .i-tags,
+    .co-post-box > .i-transparent-share-tags > .i-tags {
         color: rgb(191 186 181);
     }
 
