@@ -39,6 +39,7 @@ pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce(
         .route("/:project/tagged/:tag", get(get_profile_tagged))
         .route("/api/post/:post", get(api_get_post))
         .route("/r/:proto/:domain/*url", get(get_resource))
+        .route("/r/:proto/:domain/", get(get_resource))
         .route("/r", get(get_resource_url))
         .route("/static/:file", get(get_static))
         .route("/", get(get_index))
@@ -262,7 +263,7 @@ struct GetResource {
 
 async fn get_resource(
     State(state): State<SharedServerState>,
-    Path((proto, domain, _)): Path<(String, String, String)>,
+    Path((proto, domain)): Path<(String, String)>,
     uri: Uri,
     Query(query): Query<GetResource>,
     headers: HeaderMap,

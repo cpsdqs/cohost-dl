@@ -57,8 +57,8 @@ function makeResourceURL(urlStr: string): string {
     }
 
     const search = new URLSearchParams();
-    if (url.search) search.set('q', url.search);
-    if (url.hash) search.set('h', url.hash);
+    if (url.search) search.set('q', url.search.replace(/^\?/, ''));
+    if (url.hash) search.set('h', url.hash.replace(/^#/, ''));
 
     const proto = url.protocol.replace(/:$/, '');
 
