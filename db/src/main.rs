@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use crate::bundled_files::TEMPLATE_CONFIG;
 use crate::context::CohostContext;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -17,6 +18,7 @@ use std::time::Duration;
 use std::{env, fs, process};
 use tokio::time::sleep;
 
+mod bundled_files;
 mod comment;
 mod context;
 mod data;
@@ -105,7 +107,7 @@ async fn main() {
                     println!("Refusing to overwrite existing config.toml!");
                     process::exit(1);
                 }
-                fs::write(path, include_str!("../config.example.toml")).unwrap();
+                fs::write(path, TEMPLATE_CONFIG).unwrap();
             }
         }
     } else {
@@ -228,8 +230,7 @@ async fn interactive_impl() -> anyhow::Result<()> {
 }
 
 async fn interactive_setup() -> anyhow::Result<()> {
-    let mut config =
-        toml_edit::DocumentMut::from_str(include_str!("../config.example.toml")).unwrap();
+    let mut config = toml_edit::DocumentMut::from_str(TEMPLATE_CONFIG)?;
 
     println!("-- cohost-dl 2 interactive setup --");
     println!();

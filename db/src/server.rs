@@ -20,6 +20,7 @@ use std::time::SystemTime;
 use thiserror::Error;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
+use crate::bundled_files::CDL_STATIC;
 
 pub struct ServerState {
     db: Database,
@@ -185,48 +186,72 @@ async fn get_static(
     Path(file_name): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let cdl_static_file = PathBuf::from("static").join(&file_name);
-    let cohost_static_file = state.root_dir.join("static").join(&file_name);
-
-    let (resolved_path, metadata) = match fs::metadata(&cdl_static_file).await {
-        Ok(m) => (cdl_static_file, m),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            match fs::metadata(&cohost_static_file).await {
-                Ok(m) => (cohost_static_file, m),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    return render_error_page(
-                        &state,
-                        StatusCode::NOT_FOUND,
-                        "file not found".into(),
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "could not read file metadata for {}: {e}",
-                        cohost_static_file.display()
-                    );
-                    return render_error_page(
-                        &state,
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "could not read file metadata".into(),
-                    );
-                }
+    if cfg!(debug_assertions) {
+        // use static directory in debug mode
+        let cdl_static_file = PathBuf::from("static").join(&file_name);
+        match fs::metadata(&cdl_static_file).await {
+            Ok(metadata) => {
+                return serve_static(&state, cdl_static_file, metadata, &headers, None).await;
             }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+            Err(e) => {
+                error!(
+                    "could not read file metadata for {}: {e}",
+                    cdl_static_file.display()
+                );
+                return render_error_page(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "could not read file metadata".into(),
+                );
+            }
+        };
+    } else if let Some((file, contents)) = CDL_STATIC.iter().find(|(name, _)| *name == file_name) {
+        let etag = format!("{file}-{}", env!("BUILD_COMMIT"));
+
+        for cmp_etag in headers.get_all("if-none-match") {
+            if cmp_etag.to_str().map_or(false, |value| value == etag) {
+                return Response::builder()
+                    .status(StatusCode::NOT_MODIFIED)
+                    .body(Body::new(String::new()))
+                    .unwrap();
+            }
+        }
+
+        let ext = file.split('.').skip(1).next();
+        let content_type = content_type_for_ext(ext);
+
+        // use bundled in release
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("etag", etag)
+            .header("content-type", content_type)
+            .header("content-length", contents.len().to_string())
+            .header("cache-control", "max-age=3600, must-revalidate")
+            .body(Body::from_stream(ReaderStream::new(io::Cursor::new(
+                contents,
+            ))))
+            .unwrap();
+    }
+
+    let cohost_static_file = state.root_dir.join("static").join(&file_name);
+    match fs::metadata(&cohost_static_file).await {
+        Ok(metadata) => serve_static(&state, cohost_static_file, metadata, &headers, None).await,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            render_error_page(&state, StatusCode::NOT_FOUND, "file not found".into())
         }
         Err(e) => {
             error!(
                 "could not read file metadata for {}: {e}",
-                cdl_static_file.display()
+                cohost_static_file.display()
             );
-            return render_error_page(
+            render_error_page(
                 &state,
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "could not read file metadata".into(),
-            );
+            )
         }
-    };
-
-    serve_static(&state, resolved_path, metadata, &headers, None).await
+    }
 }
 
 #[derive(Deserialize)]
@@ -343,6 +368,27 @@ async fn get_resource_impl(state: &ServerState, url: Url, headers: HeaderMap) ->
     .await
 }
 
+fn content_type_for_ext(ext: Option<&str>) -> &'static str {
+    match ext {
+        Some("avif") => "image/avif",
+        Some("css") => "text/css; charset=utf-8",
+        Some("gif") => "image/gif",
+        Some("html") => "text/html; charset=utf-8",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("js") => "application/javascript; charset=utf-8",
+        Some("jxl") => "image/jxl",
+        Some("m4a") => "audio/mp4",
+        Some("mp3") => "audio/mp3",
+        Some("png") => "image/png",
+        Some("svg") => "image/svg+xml",
+        Some("wav") => "audio/wav",
+        Some("webp") => "image/webp",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
+}
+
 async fn serve_static(
     state: &ServerState,
     resolved_path: PathBuf,
@@ -414,24 +460,7 @@ async fn serve_static(
         ty
     } else {
         let file_ext = resolved_path.extension().map(|e| e.to_string_lossy());
-        match file_ext.as_deref() {
-            Some("avif") => "image/avif",
-            Some("css") => "text/css; charset=utf-8",
-            Some("gif") => "image/gif",
-            Some("html") => "text/html; charset=utf-8",
-            Some("jpg" | "jpeg") => "image/jpeg",
-            Some("js") => "application/javascript; charset=utf-8",
-            Some("jxl") => "image/jxl",
-            Some("m4a") => "audio/mp4",
-            Some("mp3") => "audio/mp3",
-            Some("png") => "image/png",
-            Some("svg") => "image/svg+xml",
-            Some("wav") => "audio/wav",
-            Some("webp") => "image/webp",
-            Some("woff") => "font/woff",
-            Some("woff2") => "font/woff2",
-            _ => "application/octet-stream",
-        }
+        content_type_for_ext(file_ext.as_deref())
     };
     response
         .headers_mut()

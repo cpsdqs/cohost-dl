@@ -1,3 +1,4 @@
+use crate::bundled_files::MD_RENDER_COMPILED;
 use crate::post::PostBlock;
 use deno_core::_ops::RustToV8;
 use deno_core::url::Url;
@@ -180,10 +181,7 @@ impl ThreadMarkdownRenderer {
         });
 
         let render_module = rt
-            .lazy_load_es_module_with_code(
-                "file:///render.js",
-                include_str!("../../md-render/compiled.js"),
-            )
+            .lazy_load_es_module_with_code("file:///render.js", MD_RENDER_COMPILED)
             .expect("md render script error");
 
         let (render_post_fn, render_markdown_fn) = {

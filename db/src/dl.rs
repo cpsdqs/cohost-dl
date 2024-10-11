@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
+use crate::bundled_files::COHOST_STATIC;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CurrentState {
@@ -653,8 +654,7 @@ async fn load_cohost_resources(
     ctx: &CohostContext,
     state: &Mutex<CurrentStateV1>,
 ) -> anyhow::Result<()> {
-    // these are hard-coded because they are very unlikely to change
-    let files: Vec<_> = include_str!("../cohost_static.txt")
+    let files: Vec<_> = COHOST_STATIC
         .lines()
         .filter(|line| !line.is_empty())
         .collect();
