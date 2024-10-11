@@ -1914,6 +1914,12 @@ body {
     }
 }
 
+@media (prefers-color-scheme: dark) {
+    .co-pagination-eggs > .i-button > .i-egg {
+        color: rgb(var(--color-notBlack));
+    }
+}
+
 .co-tag-button {
     display: flex;
     align-items: center;
@@ -1945,8 +1951,8 @@ body {
 .flex-0 { flex: 0; }
 .w-8 { width: 2rem; }
 .w-full { width: 100%; }
-.h-8 { width: 2rem; }
-.h-full { width: 100%; }
+.h-8 { height: 2rem; }
+.h-full { height: 100%; }
 .aspect-square { aspect-ratio: 1 / 1; }
 .col-start-1 { grid-column-start: 1; }
 .col-start-2 { grid-column-start: 2; }

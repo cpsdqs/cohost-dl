@@ -5,7 +5,7 @@ use crate::render::PageRenderer;
 use crate::Config;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{response, Router};
@@ -37,7 +37,8 @@ pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce(
         .route("/:project", get(get_profile))
         .route("/:project/tagged/:tag", get(get_profile_tagged))
         .route("/api/post/:post", get(api_get_post))
-        .route("/resource", get(get_resource))
+        .route("/r/:proto/:domain/*url", get(get_resource))
+        .route("/r", get(get_resource_url))
         .route("/static/:file", get(get_static))
         .route("/", get(get_index))
         .with_state(Arc::new(ServerState {
@@ -230,21 +231,60 @@ async fn get_static(
 
 #[derive(Deserialize)]
 struct GetResource {
-    url: String,
+    q: Option<String>,
+    h: Option<String>,
 }
 
 async fn get_resource(
     State(state): State<SharedServerState>,
+    Path((proto, domain, _)): Path<(String, String, String)>,
+    uri: Uri,
     Query(query): Query<GetResource>,
+    headers: HeaderMap,
+) -> Response {
+    // cannot use path from Path extractor because it decodes URI components.
+    // we want the raw path!
+    let path = uri
+        .path()
+        .split('/')
+        .skip(4)
+        .fold(String::new(), |acc, i| acc + "/" + i);
+
+    let mut url = match Url::parse(&format!("{proto}://{domain}{path}")) {
+        Ok(url) => url,
+        Err(e) => return render_error_page(&state, StatusCode::BAD_REQUEST, e.to_string()),
+    };
+
+    if let Some(q) = query.q {
+        url.set_query(Some(&q));
+    }
+    if let Some(h) = query.h {
+        url.set_fragment(Some(&h));
+    }
+
+    get_resource_impl(&state, url, headers).await
+}
+
+#[derive(Deserialize)]
+struct GetResourceUrl {
+    url: String,
+}
+
+async fn get_resource_url(
+    State(state): State<SharedServerState>,
+    Query(query): Query<GetResourceUrl>,
     headers: HeaderMap,
 ) -> Response {
     let url = match Url::parse(&query.url) {
         Ok(url) => url,
         Err(e) => {
-            return render_error_page(&state, StatusCode::BAD_REQUEST, format!("{e}"));
+            return render_error_page(&state, StatusCode::BAD_REQUEST, e.to_string());
         }
     };
+    get_resource_impl(&state, url, headers).await
+}
 
+async fn get_resource_impl(state: &ServerState, url: Url, headers: HeaderMap) -> Response {
     let url_file = match state.db.get_url_file(&url).await {
         Ok(path) => path,
         Err(e) => {

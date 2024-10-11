@@ -2,9 +2,31 @@ use crate::comment::CommentFromCohost;
 use crate::data::Database;
 use crate::post::PostFromCohost;
 use crate::project::ProjectFromCohost;
+use deno_core::url::Url;
 
 fn make_resource_url(s: &str) -> String {
-    format!("/resource?url={}", urlencoding::encode(s))
+    if let Ok(url) = Url::parse(s) {
+        if let Some(host) = url.host_str() {
+            let mut query_builder = Url::parse("https://example.com").unwrap();
+
+            if let Some(q) = url.query() {
+                query_builder.query_pairs_mut().append_pair("q", q);
+            }
+            if let Some(h) = url.fragment() {
+                query_builder.query_pairs_mut().append_pair("h", h);
+            }
+
+            let search = if let Some(q) = query_builder.query().filter(|s| !s.is_empty()) {
+                format!("?{q}")
+            } else {
+                String::new()
+            };
+
+            return format!("/r/{}/{}{}{}", url.scheme(), host, url.path(), search);
+        }
+    }
+
+    format!("/r/u?url={}", urlencoding::encode(s))
 }
 
 pub async fn rewrite_project(db: &Database, project: &mut ProjectFromCohost) -> anyhow::Result<()> {
@@ -33,7 +55,10 @@ pub async fn rewrite_project(db: &Database, project: &mut ProjectFromCohost) -> 
 }
 
 #[async_recursion::async_recursion]
-pub async fn rewrite_projects_in_post(db: &Database, post: &mut PostFromCohost) -> anyhow::Result<()> {
+pub async fn rewrite_projects_in_post(
+    db: &Database,
+    post: &mut PostFromCohost,
+) -> anyhow::Result<()> {
     rewrite_project(db, &mut post.posting_project).await?;
 
     for post in &mut post.share_tree {

@@ -48,8 +48,21 @@ interface MarkdownResult {
     html: string;
 }
 
-function makeResourceURL(url: string): string {
-    return `/resource?url=${encodeURIComponent(url)}`;
+function makeResourceURL(urlStr: string): string {
+    let url: URL;
+    try {
+        url = new URL(urlStr);
+    } catch {
+        return `/r?url=${encodeURIComponent(urlStr)}`;
+    }
+
+    const search = new URLSearchParams();
+    if (url.search) search.set('q', url.search);
+    if (url.hash) search.set('h', url.hash);
+
+    const proto = url.protocol.replace(/:$/, '');
+
+    return `/r/${proto}/${url.host}${url.pathname}${search.size ? `?${search}` : ''}`;
 }
 
 function rewriteMdastPlugin(resources: string[]) {

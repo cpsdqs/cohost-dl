@@ -382,6 +382,8 @@ async fn interactive_setup() -> anyhow::Result<()> {
         .await
         .context("getting login info")?;
 
+    drop(ctx);
+
     let current_handle = projects
         .projects
         .iter()
@@ -470,7 +472,7 @@ async fn interactive_setup() -> anyhow::Result<()> {
 
 async fn interactive_login() -> anyhow::Result<Option<String>> {
     let (cookie, needs_otp) = loop {
-        println!("Enter your Cohost email address, or type 'exit' to go back.");
+        println!("Enter your Cohost login email address, or type 'exit' to go back.");
         let email = rl_parse("email: ", |i| Some(i.to_string()))?;
         let email = email.trim();
 
@@ -478,7 +480,7 @@ async fn interactive_login() -> anyhow::Result<Option<String>> {
             return Ok(None);
         }
 
-        println!("Enter your Cohost password. For security reasons, your input is invisible.");
+        println!("Enter your Cohost login password. For security reasons, your input is invisible.");
         let password = rpassword::prompt_password("password: ")?;
 
         println!("Logging in...");

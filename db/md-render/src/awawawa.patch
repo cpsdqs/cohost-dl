@@ -390,6 +390,19 @@ index 2b1ea42..10cfcf5 100644
  
  export const SiteConfigProvider = createContext<SiteConfigType>(defaultConfig);
  
+diff --git a/shared/sitemap.ts b/shared/sitemap.ts
+index e0217f9..66e0aa0 100644
+--- a/shared/sitemap.ts
++++ b/shared/sitemap.ts
+@@ -528,7 +528,7 @@ export const sitemap = {
+             home: (args: { projectHandle: ProjectHandle }) =>
+                 projectSubdomain(patterns.public.project.home, args),
+             mainAppProfile: (args: { projectHandle: ProjectHandle }) =>
+-                mainDomain(patterns.public.project.mainAppProfile, args),
++                `/${args.projectHandle}`,
+             profileEdit: () =>
+                 mainDomain(patterns.public.project.profileEdit, {}),
+             followers: () => mainDomain(patterns.public.project.followers, {}),
 diff --git a/shared/types/asks.ts b/shared/types/asks.ts
 index d898fd9..b9c674a 100644
 --- a/shared/types/asks.ts
