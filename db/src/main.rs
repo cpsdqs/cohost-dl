@@ -3,6 +3,7 @@ extern crate log;
 
 use crate::bundled_files::TEMPLATE_CONFIG;
 use crate::context::CohostContext;
+use crate::data::Database;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use diesel::connection::SimpleConnection;
@@ -127,6 +128,9 @@ fn init() -> anyhow::Result<(Config, SqliteConnection)> {
     if let Err(e) = db.run_pending_migrations(MIGRATIONS) {
         anyhow::bail!("could not run database migrations: {e}");
     }
+
+    Database::migrate_old_url_files(&mut db)?;
+    Database::migrate_posts(&mut db)?;
 
     Ok((config, db))
 }

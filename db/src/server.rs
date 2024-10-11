@@ -1,3 +1,4 @@
+use crate::bundled_files::CDL_STATIC;
 use crate::data::Database;
 use crate::render::api_data::{cohost_api_post, GetDataError};
 use crate::render::project_profile::ProjectProfileQuery;
@@ -20,7 +21,6 @@ use std::time::SystemTime;
 use thiserror::Error;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use crate::bundled_files::CDL_STATIC;
 
 pub struct ServerState {
     db: Database,

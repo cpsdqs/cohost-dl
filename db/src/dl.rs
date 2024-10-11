@@ -1,3 +1,4 @@
+use crate::bundled_files::COHOST_STATIC;
 use crate::context::{CohostContext, GetError, MAX_RETRIES};
 use crate::trpc::LoginLoggedIn;
 use crate::Config;
@@ -14,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use crate::bundled_files::COHOST_STATIC;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CurrentState {

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::str;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -26,6 +27,21 @@ pub struct Database {
 }
 
 /// Select fields from posts to store in the database blob
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PostDataV2 {
+    pub blocks: Vec<PostBlock>,
+    pub comments_locked: bool,
+    pub shares_locked: bool,
+    pub cws: Vec<String>,
+    pub has_cohost_plus: bool,
+    pub headline: String,
+    pub num_comments: u64,
+    pub num_shared_comments: u64,
+    pub plain_text_body: String,
+    pub post_edit_url: String,
+    pub single_post_page_url: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostDataV1 {
     pub blocks: Vec<PostBlock>,
@@ -73,22 +89,36 @@ pub struct CommentDataV1 {
     pub hidden: bool,
 }
 
-impl PostDataV1 {
+impl PostDataV2 {
     pub fn from_post(post: &PostFromCohost) -> Self {
         Self {
             blocks: post.blocks.clone(),
             comments_locked: post.comments_locked,
             shares_locked: post.shares_locked,
             cws: post.cws.clone(),
-            effective_adult_content: post.effective_adult_content,
             has_cohost_plus: post.has_cohost_plus,
             headline: post.headline.clone(),
             num_comments: post.num_comments,
             num_shared_comments: post.num_shared_comments,
-            pinned: post.pinned,
             plain_text_body: post.plain_text_body.clone(),
             post_edit_url: post.post_edit_url.clone(),
             single_post_page_url: post.single_post_page_url.clone(),
+        }
+    }
+
+    fn from_v1(data: PostDataV1) -> Self {
+        Self {
+            blocks: data.blocks,
+            comments_locked: data.comments_locked,
+            shares_locked: data.shares_locked,
+            cws: data.cws,
+            has_cohost_plus: data.has_cohost_plus,
+            headline: data.headline,
+            num_comments: data.num_comments,
+            num_shared_comments: data.num_shared_comments,
+            plain_text_body: data.plain_text_body,
+            post_edit_url: data.post_edit_url,
+            single_post_page_url: data.single_post_page_url,
         }
     }
 }
@@ -141,6 +171,8 @@ pub struct DbPost {
     pub data: Vec<u8>,
     pub data_version: i32,
     pub state: i32,
+    pub is_adult_content: bool,
+    pub is_pinned: bool,
 }
 
 #[derive(Queryable, Insertable, AsChangeset)]
@@ -187,12 +219,16 @@ impl DbPost {
             data,
             data_version,
             state: post.state as i32,
+            is_adult_content: post.effective_adult_content,
+            is_pinned: post.pinned,
         }
     }
 
-    pub fn data(&self) -> Result<PostDataV1, DbDataError> {
-        if self.data_version == 1 {
+    pub fn data(&self) -> Result<PostDataV2, DbDataError> {
+        if self.data_version == 2 {
             Ok(rmp_serde::from_slice(&self.data)?)
+        } else if self.data_version == 1 {
+            Ok(PostDataV2::from_v1(rmp_serde::from_slice(&self.data)?))
         } else {
             Err(DbDataError::Version(self.data_version))
         }
@@ -607,10 +643,10 @@ impl PostQuery {
         }
 
         if let Some(is_adult) = self.is_adult {
-            // TODO: requires data...
+            query = query.filter(posts::is_adult_content.eq(is_adult));
         }
         if let Some(is_pinned) = self.is_pinned {
-            // TODO: requires data...
+            query = query.filter(posts::is_pinned.eq(is_pinned));
         }
 
         query.select(posts::id)
@@ -808,6 +844,27 @@ impl Database {
         Ok(result as u64)
     }
 
+    fn read_url_file_path(path: &[u8]) -> QueryResult<PathBuf> {
+        // use diesel errors so we can keep using QueryResult
+        use diesel::result::Error;
+
+        #[derive(Debug)]
+        struct InvalidUrlFilePath;
+        impl std::fmt::Display for InvalidUrlFilePath {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "invalid URL file path in database")
+            }
+        }
+        impl std::error::Error for InvalidUrlFilePath {}
+
+        if path.get(0) != Some(&b'@') || path.get(1) != Some(&b'/') {
+            return Err(Error::DeserializationError(Box::new(InvalidUrlFilePath)));
+        }
+        let path = str::from_utf8(path).map_err(|e| Error::DeserializationError(Box::new(e)))?;
+
+        Ok(PathBuf::from(&path[2..]))
+    }
+
     pub async fn get_url_file(&self, the_url: &Url) -> QueryResult<Option<PathBuf>> {
         use crate::schema::url_files::dsl::*;
 
@@ -820,10 +877,11 @@ impl Database {
             .first(db)
             .optional()?;
 
-        Ok(path.map(|path| {
-            // SAFETY: well, we stored it that way
-            PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) })
-        }))
+        if let Some(path) = path {
+            Ok(Some(Self::read_url_file_path(&path)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn get_url_files_batch(
@@ -844,11 +902,7 @@ impl Database {
         let mut res_items = Vec::new();
         for item in items {
             let (the_url, path) = item?;
-            res_items.push((
-                the_url,
-                // SAFETY: well, we stored it that way
-                PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) }),
-            ));
+            res_items.push((the_url, Self::read_url_file_path(&path)?));
         }
         Ok(res_items)
     }
@@ -1069,12 +1123,12 @@ impl Database {
 
         let base = Url::parse(&post.single_post_page_url).context("invalid post URL")?;
 
-        let post_data = PostDataV1::from_post(&post);
+        let post_data = PostDataV2::from_post(&post);
         let refs = post_data.collect_refs(&base);
 
         let post_data = rmp_serde::to_vec_named(&post_data).context("DB data")?;
 
-        let mut db_post = DbPost::from_post(&post, post_data, 1);
+        let mut db_post = DbPost::from_post(&post, post_data, 2);
         db_post.share_of_post_id = shared_post_id.map(|i| i as i32);
 
         let mut db = self.db.lock().await;
@@ -1334,14 +1388,156 @@ impl Database {
         let db = &mut *db;
 
         let orig_url = orig_url.to_string();
-        let path = path.as_os_str().as_encoded_bytes();
+        let path = path.to_str().context("path contains invalid UTF-8")?;
+        let path_buf = format!("@/{path}").into_bytes();
 
         diesel::insert_into(url_files)
-            .values(&(url.eq(orig_url), file_path.eq(path)))
+            .values(&(url.eq(orig_url), file_path.eq(&path_buf)))
             .on_conflict(url)
             .do_update()
-            .set(file_path.eq(path))
+            .set(file_path.eq(&path_buf))
             .execute(db)?;
+
+        Ok(())
+    }
+}
+
+impl Database {
+    pub fn get_migration_state(
+        db: &mut SqliteConnection,
+        the_name: &str,
+    ) -> QueryResult<Option<String>> {
+        use crate::schema::data_migration_state::dsl::*;
+
+        data_migration_state
+            .filter(name.eq(the_name))
+            .select(value)
+            .first(db)
+            .optional()
+    }
+
+    pub fn set_migration_state(
+        db: &mut SqliteConnection,
+        the_name: &str,
+        the_value: &str,
+    ) -> QueryResult<()> {
+        use crate::schema::data_migration_state::dsl::*;
+
+        diesel::insert_into(data_migration_state)
+            .values(&(name.eq(the_name), value.eq(the_value)))
+            .on_conflict(name)
+            .do_update()
+            .set(value.eq(the_value))
+            .execute(db)?;
+
+        Ok(())
+    }
+
+    fn migrate_old_url_file(path: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        if path.get(0) == Some(&b'@') {
+            return Ok(path);
+        }
+
+        let path = PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(path) });
+        let path = path
+            .to_str()
+            .context("could not migrate file path because it contains invalid UTF-8")?;
+        Ok(format!("@/{path}").into_bytes())
+    }
+
+    /// Migrate from OSString encoded bytes to UTF-8
+    pub fn migrate_old_url_files(db: &mut SqliteConnection) -> anyhow::Result<()> {
+        if Self::get_migration_state(db, "url_files")?.as_deref() == Some("1") {
+            return Ok(());
+        }
+
+        {
+            use crate::schema::url_files::dsl as url_files;
+
+            for i in (0..).map(|i| i * 1000) {
+                let items: Vec<(String, Vec<u8>)> = url_files::url_files
+                    .select((url_files::url, url_files::file_path))
+                    .offset(i)
+                    .limit(1000)
+                    .load(db)?;
+
+                if items.is_empty() {
+                    break;
+                }
+
+                if i == 0 {
+                    info!("Migrating url_files to UTF-8");
+                }
+
+                for (url, path) in items {
+                    let path = Self::migrate_old_url_file(path)?;
+
+                    diesel::update(url_files::url_files)
+                        .filter(url_files::url.eq(url))
+                        .set(url_files::file_path.eq(path))
+                        .execute(db)?;
+                }
+            }
+        }
+
+        Self::set_migration_state(db, "url_files", "1")?;
+
+        Ok(())
+    }
+
+    fn migrate_posts_v2(db: &mut SqliteConnection) -> anyhow::Result<()> {
+        use crate::schema::posts::dsl as posts;
+
+        for i in (0..).map(|i| i * 1000) {
+            let posts: Vec<DbPost> = posts::posts.offset(i).limit(1000).load(db)?;
+
+            if posts.is_empty() {
+                break;
+            }
+
+            if i == 0 {
+                info!("Migration posts to V2");
+            }
+
+            for mut post in posts {
+                if post.data_version != 1 {
+                    continue;
+                }
+
+                let data: PostDataV1 = rmp_serde::from_slice(&post.data)?;
+
+                post.is_adult_content = data.effective_adult_content;
+                post.is_pinned = data.pinned;
+
+                let data = PostDataV2::from_v1(data);
+                post.data = rmp_serde::to_vec_named(&data)?;
+                post.data_version = 2;
+
+                diesel::update(posts::posts)
+                    .filter(posts::id.eq(post.id))
+                    .set((
+                        posts::is_adult_content.eq(post.is_adult_content),
+                        posts::is_pinned.eq(post.is_pinned),
+                        posts::data.eq(post.data),
+                        posts::data_version.eq(post.data_version),
+                    ))
+                    .execute(db)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn migrate_posts(db: &mut SqliteConnection) -> anyhow::Result<()> {
+        let version = Self::get_migration_state(db, "posts_version")?;
+        match version.as_deref() {
+            Some("2") => (),
+            None => {
+                Self::migrate_posts_v2(db)?;
+                Self::set_migration_state(db, "posts_version", "2")?;
+            }
+            _ => panic!("database contains invalid posts_version: {version:?}"),
+        }
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use crate::data::{CommentDataV1, PostDataV1, ProjectDataV1};
+use crate::data::{CommentDataV1, PostDataV2, ProjectDataV1};
 use crate::post::{
     PostBlock, PostBlockAsk, PostBlockAskProject, PostBlockAttachment, PostBlockMarkdown,
 };
@@ -273,7 +273,7 @@ impl ResourceRefs for PostBlock {
     }
 }
 
-impl ResourceRefs for PostDataV1 {
+impl ResourceRefs for PostDataV2 {
     fn collect_refs(&self, base: &Url) -> HashSet<Url> {
         let mut refs = HashSet::new();
 

@@ -20,6 +20,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    data_migration_state (name) {
+        name -> Text,
+        value -> Text,
+    }
+}
+
+diesel::table! {
     follows (from_project_id, to_project_id) {
         from_project_id -> Integer,
         to_project_id -> Integer,
@@ -67,6 +74,8 @@ diesel::table! {
         data -> Binary,
         data_version -> Integer,
         state -> Integer,
+        is_adult_content -> Bool,
+        is_pinned -> Bool,
     }
 }
 
@@ -125,6 +134,7 @@ diesel::joinable!(project_resources -> projects (project_id));
 diesel::allow_tables_to_appear_in_same_query!(
     comment_resources,
     comments,
+    data_migration_state,
     follows,
     likes,
     post_related_projects,
