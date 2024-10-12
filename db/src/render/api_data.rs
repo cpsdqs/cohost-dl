@@ -14,6 +14,8 @@ pub enum GetDataError {
     OtherQuery(DieselError),
     #[error("data error: {0}")]
     DbData(#[from] DbDataError),
+    #[error("render error: {0}")]
+    Render(anyhow::Error),
 }
 
 impl From<DieselError> for GetDataError {

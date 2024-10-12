@@ -1,6 +1,6 @@
 {% import "project_sidebar.html" as project_sidebar %}
+{% import "pagination_eggs.html" as pagination_eggs %}
 {% import "post.html" as post %}
-{% import "comments.html" as comments %}
 {% extends "base.html" %}
 
 {% block title %}
@@ -55,27 +55,7 @@ cohost archive! - {{ project.handle }}
         {{ post::render(post = post, expand = false) }}
         {% endfor %}
 
-        <nav class="co-pagination-eggs">
-            {% if filter_state.onPrevPage %}
-            <a class="i-button is-prev co-drop-shadow" href="{{ b ~ filter_state.onPrevPage }}" aria-label="previous page">
-                <div class="i-egg">
-                    <svg class="i-arrow" width="24" height="24">
-                        <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
-                </div>
-            </a>
-            {% endif %}
-            <span class="i-spacer"></span>
-            {% if filter_state.onNextPage %}
-            <a class="i-button is-next co-drop-shadow" href="{{ b ~ filter_state.onNextPage }}" aria-label="next page">
-                <div class="i-egg">
-                    <svg class="i-arrow" width="24" height="24">
-                        <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
-                </div>
-            </a>
-            {% endif %}
-        </nav>
+        {{ pagination_eggs::pagination_eggs(base = b, prev_page = filter_state.onPrevPage, next_page = filter_state.onNextPage) }}
     </div>
 </div>
 

@@ -38,8 +38,10 @@ templates! {
     "comments.html",
     "error.html",
     "index.html",
+    "pagination_eggs.html",
     "post.html",
     "project_profile.html",
     "project_sidebar.html",
     "single_post.html",
+    "tag_feed.html",
 }

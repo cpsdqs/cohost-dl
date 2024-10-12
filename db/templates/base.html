@@ -30,7 +30,7 @@
     </div>
 </header>
 {% block base_header %}{% endblock base_header %}
-<div id="page-container" class="co-container">
+<div id="page-container" class="co-container {% block page_container_classes %}{% endblock page_container_classes %}">
     {% block base_contents %}{% endblock base_contents %}
 </div>
 <script src="/static/base.js"></script>

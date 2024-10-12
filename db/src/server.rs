@@ -1,6 +1,7 @@
 use crate::bundled_files::CDL_STATIC;
 use crate::data::Database;
 use crate::render::api_data::{cohost_api_post, GetDataError};
+use crate::render::feed::TagFeedQuery;
 use crate::render::project_profile::ProjectProfileQuery;
 use crate::render::PageRenderer;
 use crate::Config;
@@ -34,6 +35,7 @@ pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce(
     let db = Database::new(db);
 
     let routes = Router::new()
+        .route("/rc/tagged/:tag", get(get_global_tagged))
         .route("/:project/post/:post", get(get_single_post))
         .route("/:project", get(get_profile))
         .route("/:project/tagged/:tag", get(get_profile_tagged))
@@ -112,6 +114,27 @@ async fn get_single_post(
         .render_single_post(&state.db, &project, &post)
         .await
         .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_global_tagged(
+    State(state): State<SharedServerState>,
+    uri: Uri,
+    Path(tag): Path<String>,
+    Query(query): Query<TagFeedQuery>,
+) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_tag_feed(&state.db, uri.path(), &tag, query)
+        .await
+        .map_err(|e| {
+            render_error_page(&state, StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+        })?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)

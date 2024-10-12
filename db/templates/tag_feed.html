@@ -1,0 +1,80 @@
+{% import "post.html" as post %}
+{% import "pagination_eggs.html" as pagination_eggs %}
+{% extends "base.html" %}
+
+{% block title %}
+cohost archive! - #{{ tag }}
+{% endblock title %}
+
+{% block page_container_classes %} is-tag-feed {% endblock page_container_classes %}
+{% block base_contents %}
+<div class="i-large-nav-spacer"></div>
+
+<div class="page-contents is-tag-feed">
+    <div class="tag-feed-header">
+        <h4>#{{ tag }}</h4>
+        {% if synonym_tags | length %}
+        <h6>
+            also:
+            {% set is_first = true -%}
+            {%- for syn in synonym_tags -%}
+            {%- if is_first -%}
+            {%- set_global is_first = false -%}
+            {%- else -%}
+            ,
+            {%- endif %}
+            #{{ syn }}
+            {%- endfor -%}
+        </h6>
+        {% endif %}
+    </div>
+
+    <div class="feed-posts">
+        {% for post in posts %}
+        {{ post::render_preview(post = post) }}
+        {% endfor %}
+
+        {{ pagination_eggs::pagination_eggs(base = "", prev_page = filter_state.onPrevPage, next_page = filter_state.onNextPage) }}
+    </div>
+</div>
+
+<div class="feed-sidebar-alt">
+    <details class="co-themed-titled-box large:expanded" role="group">
+        <summary class="i-header">
+            <span class="i-label">
+                View Settings
+            </span>
+        </summary>
+        <div class="i-contents feed-view-settings">
+            <a
+                class="i-bool-setting"
+                href="{{ filter_state.onToggle18PlusPosts }}"
+                data-state="{{ filter_state.query.show18PlusPosts }}"
+                data-active-invert
+            >
+                show 18+ posts
+            </a>
+        </div>
+    </details>
+    {% if related_tags | length %}
+    <details class="co-themed-titled-box large:expanded" role="group">
+        <summary class="i-header">
+            <span class="i-label">
+                Related Tags
+            </span>
+        </summary>
+        <div class="i-contents feed-related-tag-list">
+            <ul class="i-tag-list">
+                {% for tag in related_tags %}
+                <li>
+                    <a class="co-tag-button is-small" href="/rc/tagged/{{ tag | urlencode }}">
+                        {{ tag }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </details>
+    {% endif %}
+</div>
+{% endblock base_contents %}

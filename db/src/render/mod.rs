@@ -3,7 +3,8 @@ use crate::render::md_render::MarkdownRenderer;
 use tera::{Context, Tera};
 
 pub mod api_data;
-mod index;
+pub mod feed;
+pub mod index;
 pub mod md_render;
 pub mod project_profile;
 pub mod rewrite;

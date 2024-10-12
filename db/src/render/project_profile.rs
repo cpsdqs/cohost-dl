@@ -1,12 +1,12 @@
 use crate::data::{Database, PostQuery};
-use crate::render::api_data::{cohost_api_post, cohost_api_project, GetDataError};
-use crate::render::md_render::{MarkdownRenderContext, MarkdownRenderRequest, PostRenderRequest};
-use crate::render::rewrite::{rewrite_project, rewrite_projects_in_post};
+use crate::render::api_data::cohost_api_project;
+use crate::render::feed::RenderedPosts;
+use crate::render::md_render::{MarkdownRenderContext, MarkdownRenderRequest};
+use crate::render::rewrite::rewrite_project;
 use crate::render::PageRenderer;
 use axum::http::StatusCode;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tera::Context;
 use thiserror::Error;
 
@@ -14,10 +14,6 @@ use thiserror::Error;
 pub enum RenderProjectProfileError {
     #[error("no such project")]
     NoSuchProject,
-    #[error("error reading post {0}: {1}")]
-    GetPost(u64, GetDataError),
-    #[error("error rendering post {0}: {1}")]
-    RenderPost(u64, anyhow::Error),
     #[error("error rendering project: {0}")]
     RenderProject(anyhow::Error),
     #[error("{0:?}")]
@@ -175,55 +171,14 @@ impl PageRenderer {
             ..Default::default()
         };
 
-        let post_ids = post_query
-            .get(db)
+        let RenderedPosts {
+            posts,
+            rendered_posts,
+            max_page,
+        } = self
+            .get_rendered_posts(db, &post_query)
             .await
             .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
-
-        let total_count = post_query
-            .count(db)
-            .await
-            .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
-
-        let max_page = total_count.saturating_sub(1) / 20;
-
-        let mut posts = Vec::with_capacity(post_ids.len());
-        let mut rendered_posts = HashMap::with_capacity(post_ids.len());
-
-        for post in post_ids {
-            let mut post = cohost_api_post(db, 0, post)
-                .await
-                .map_err(|e| RenderProjectProfileError::GetPost(post, e))?;
-
-            for post in std::iter::once(&post).chain(post.share_tree.iter()) {
-                let resources = db
-                    .get_saved_resource_urls_for_post(post.post_id)
-                    .await
-                    .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
-
-                let result = self
-                    .md
-                    .render_post(PostRenderRequest {
-                        blocks: post.blocks.clone(),
-                        published_at: post
-                            .published_at
-                            .clone()
-                            .unwrap_or_else(|| Utc::now().to_rfc3339()),
-                        has_cohost_plus: post.has_cohost_plus,
-                        resources,
-                    })
-                    .await
-                    .map_err(|e| RenderProjectProfileError::RenderPost(post.post_id, e))?;
-
-                rendered_posts.insert(post.post_id, result);
-            }
-
-            rewrite_projects_in_post(db, &mut post)
-                .await
-                .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
-
-            posts.push(post);
-        }
 
         let mut template_ctx = Context::new();
         template_ctx.insert("project", &project);

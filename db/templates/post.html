@@ -187,3 +187,21 @@
     </div>
 </article>
 {% endmacro %}
+
+{% macro render_preview(post) %}
+<div class="co-post-preview">
+    <a
+        class="i-large-avatar co-drop-shadow"
+        href="/{{ post.postingProject.handle }}"
+        title="@{{ post.postingProject.handle }}"
+    >
+        <img
+            class="co-avatar i-avatar"
+            data-shape="{{ post.postingProject.avatarShape }}"
+            src="{{ post.postingProject.avatarURL }}"
+            alt="{{ post.postingProject.handle }}"
+        />
+    </a>
+    {{ post::render(post = post, expand = false) }}
+</div>
+{% endmacro %}

@@ -582,6 +582,7 @@ impl PostQuery {
         use crate::schema::likes::dsl as likes;
         use crate::schema::post_tags::dsl as tags;
         use crate::schema::posts::dsl as posts;
+        use crate::schema::related_tags::dsl as rel_tags;
 
         let mut query = posts::posts
             .order_by(posts::published_at.desc())
@@ -594,16 +595,45 @@ impl PostQuery {
             query = query.filter(posts::share_of_post_id.eq(share_of_post_id as i32));
         }
 
+        let exclude_synonyms_1 = rel_tags::related_tags
+            .filter(rel_tags::tag1.eq_any(self.exclude_tags.clone()))
+            .select(rel_tags::tag2);
+        let exclude_synonyms_2 = rel_tags::related_tags
+            .filter(rel_tags::tag2.eq_any(self.exclude_tags.clone()))
+            .select(rel_tags::tag1);
+
         if !self.include_tags.is_empty() {
+            let include_synonyms_1 = rel_tags::related_tags
+                .filter(rel_tags::tag1.eq_any(self.include_tags.clone()))
+                .select(rel_tags::tag2);
+            let include_synonyms_2 = rel_tags::related_tags
+                .filter(rel_tags::tag2.eq_any(self.include_tags.clone()))
+                .select(rel_tags::tag1);
+
             let tagged_posts = tags::post_tags
-                .filter(tags::tag.eq_any(self.include_tags.clone()))
-                .filter(tags::tag.ne_all(self.exclude_tags.clone()))
+                .filter(
+                    tags::tag
+                        .eq_any(self.include_tags.clone())
+                        .or(tags::tag.eq_any(include_synonyms_1))
+                        .or(tags::tag.eq_any(include_synonyms_2)),
+                )
+                .filter(
+                    tags::tag
+                        .ne_all(self.exclude_tags.clone())
+                        .and(tags::tag.ne_all(exclude_synonyms_1))
+                        .and(tags::tag.ne_all(exclude_synonyms_2)),
+                )
                 .select(tags::post_id);
 
             query = query.filter(posts::id.eq_any(tagged_posts));
         } else if !self.exclude_tags.is_empty() {
             let tagged_posts = tags::post_tags
-                .filter(tags::tag.ne_all(self.exclude_tags.clone()))
+                .filter(
+                    tags::tag
+                        .ne_all(self.exclude_tags.clone())
+                        .and(tags::tag.ne_all(exclude_synonyms_1))
+                        .and(tags::tag.ne_all(exclude_synonyms_2)),
+                )
                 .select(tags::post_id);
 
             query = query.filter(posts::id.eq_any(tagged_posts));
@@ -668,6 +698,107 @@ impl PostQuery {
         let db = &mut *db;
         let count: i64 = self.build().count().get_result(db)?;
         Ok(count as u64)
+    }
+}
+
+/// Tag queries
+impl Database {
+    pub async fn canonical_tag_capitalization(&self, the_tag: &str) -> QueryResult<Option<String>> {
+        use crate::schema::post_tags::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let res = post_tags
+            .filter(
+                diesel::dsl::sql::<diesel::sql_types::Bool>("lower(tag) = ")
+                    .bind::<diesel::sql_types::Text, _>(the_tag.to_ascii_lowercase()),
+            )
+            .select(tag)
+            .first(db)
+            .optional()?;
+
+        Ok(res)
+    }
+
+    pub async fn synonym_tags(&self, tag: &str) -> QueryResult<Vec<String>> {
+        use crate::schema::related_tags::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let synonyms_l1: Vec<String> = related_tags
+            .filter(tag2.eq(tag))
+            .filter(is_synonym.eq(1))
+            .select(tag1)
+            .union(
+                related_tags
+                    .filter(tag1.eq(tag))
+                    .filter(is_synonym.eq(1))
+                    .select(tag2),
+            )
+            .load(db)?;
+
+        // we only need to check two levels.
+        // this-tag -> main-tag-with-all-relations -> all-other-tags
+        let synonyms_l2: Vec<String> = related_tags
+            .filter(tag2.eq_any(&synonyms_l1))
+            .filter(is_synonym.eq(1))
+            .select(tag1)
+            .union(
+                related_tags
+                    .filter(tag1.eq_any(&synonyms_l1))
+                    .filter(is_synonym.eq(1))
+                    .select(tag2),
+            )
+            .load(db)?;
+
+        let mut items: Vec<_> = synonyms_l1
+            .into_iter()
+            .chain(synonyms_l2.into_iter())
+            .filter(|t| t != tag)
+            .collect();
+
+        items.sort();
+
+        Ok(items)
+    }
+
+    pub async fn related_tags<I>(
+        &self,
+        tag: I,
+        synonyms: impl IntoIterator<Item = I>,
+    ) -> QueryResult<Vec<String>>
+    where
+        I: AsRef<str>,
+    {
+        use crate::schema::related_tags::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let mut items = Vec::new();
+
+        for tag in std::iter::once(tag).chain(synonyms) {
+            let tag = tag.as_ref();
+            let related: Vec<String> = related_tags
+                .filter(tag1.eq(tag))
+                .filter(is_synonym.eq(0))
+                .select(tag2)
+                .union(
+                    related_tags
+                        .filter(tag2.eq(tag))
+                        .filter(is_synonym.eq(0))
+                        .select(tag1),
+                )
+                .load(db)?;
+
+            items.extend(related);
+        }
+
+        items.sort();
+
+        Ok(items)
     }
 }
 

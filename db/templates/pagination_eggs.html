@@ -1,0 +1,23 @@
+{% macro pagination_eggs(base, prev_page, next_page) %}
+<nav class="co-pagination-eggs">
+    {% if prev_page %}
+    <a class="i-button is-prev co-drop-shadow" href="{{ base ~ prev_page }}" aria-label="previous page">
+        <div class="i-egg">
+            <svg class="i-arrow" width="24" height="24">
+                <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+        </div>
+    </a>
+    {% endif %}
+    <span class="i-spacer"></span>
+    {% if next_page %}
+    <a class="i-button is-next co-drop-shadow" href="{{ base ~ next_page }}" aria-label="next page">
+        <div class="i-egg">
+            <svg class="i-arrow" width="24" height="24">
+                <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+        </div>
+    </a>
+    {% endif %}
+</nav>
+{% endmacro pagination_eggs %}
