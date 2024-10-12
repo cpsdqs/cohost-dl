@@ -71,9 +71,9 @@
 </div>
 {% endmacro co_post_header %}
 
-{% macro co_post_contents(post, expand) %}
+{% macro co_post_contents(post, expand, skip_headline) %}
 <div class="co-post-contents">
-    {%- if post.headline %}
+    {%- if post.headline and not skip_headline %}
     <div class="i-headline">
         <a class="prose" href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
             <h3>
@@ -120,14 +120,112 @@
     </div>
     {%- endif -%}
 </div>
-{% endmacro co_post_contents %}
+{% endmacro %}
+
+{% macro co_post_collapser(post, expand) %}
+{%- if post.singlePostPageUrl == "https://cohost.org/" -%}
+<div class="co-post-tombstone">
+    <div class="co-info-box is-tombstone i-exclam-circle-icon">
+        {#- we don’t actually know if deleted or unpublished, but it doesn’t really matter that much -#}
+        Sorry! This post has been deleted by its original author.
+    </div>
+</div>
+{%- else -%}
+
+{%- set collapsed = false -%}
+{%- if post.cws | length -%}
+    {%- set collapsed = true -%}
+{%- endif -%}
+{%- if post.effectiveAdultContent -%}
+    {%- set collapsed = true -%}
+{%- endif -%}
+
+{%- if collapsed -%}
+<div class="co-post-collapser has-css-state">
+    {% set id = "post-collapser-" ~ post.postId -%}
+    <input class="i-expanded-state" type="checkbox" id="{{ id }}" />
+
+    <div class="i-collapsed">
+        {% if post.effectiveAdultContent %}
+        <div class="co-info-box is-18-plus i-info-circle-icon">
+            This post contains 18+ content.
+        </div>
+        {% endif %}
+        {% if post.cws | length %}
+        <div class="co-info-box is-warning i-shield-exclam-icon">
+            <div>
+                This post has content warnings for:
+                <span class="i-cws">
+                    {{ post.cws | join(sep = ", ") }}.
+                </span>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="i-buttons">
+            <label class="i-button i-expand-collapsed-button" for="{{ id }}">show post</label>
+        </div>
+
+        {% if post.tags | length %}
+        <div class="i-tags">
+            {%- for tag in post.tags -%}
+            <a class="i-tag" href="/rc/tagged/{{ tag | urlencode_strict }}">
+                #{{tag}}
+            </a>
+            {%- endfor -%}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="i-expanded">
+        {% set is_inline_header = false %}
+        {% if post.cws | length %}
+        <div class="i-collapse-header">
+            <div class="co-info-box is-warning i-shield-exclam-icon">
+                <div class="i-contents">
+                    {% if post.effectiveAdultContent %}
+                    <div class="i-adult">
+                        This post contains 18+ content.
+                    </div>
+                    {% endif %}
+                    <div class="i-cws">
+                    CWs: <span class="i-cws">{{ post.cws | join(sep = ", ") }}.</span>
+                    </div>
+                </div>
+            </div>
+            <label class="i-button i-collapse-button" for="{{ id }}">hide post</label>
+        </div>
+        {% else %}
+        {% set is_inline_header = true %}
+        <div class="i-collapse-header is-inline">
+            <div class="i-headline">
+                <a class="prose" href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
+                    <h3>
+                        {{ post.headline }}
+                    </h3>
+                </a>
+            </div>
+            <div class="co-info-box is-18-plus">18+</div>
+            <label class="i-button i-collapse-button" for="{{ id }}">hide post</label>
+        </div>
+        {% endif %}
+
+        {{ post::co_post_contents(post = post, expand = expand, skip_headline = is_inline_header) }}
+    </div>
+</div>
+{%- else -%}
+{{ post::co_post_contents(post = post, expand = expand, skip_headline = false) }}
+{%- endif -%}
+
+{%- endif -%}
+{% endmacro %}
 
 {% macro co_thread_item(post, expand) %}
 <div class="co-thread-item" id="post-{{ post.postId }}">
     <div class="i-header">
         {{ post::co_post_header(post = post, show_shared_from = false) }}
     </div>
-    {{ post::co_post_contents(post = post, expand = expand) }}
+    {{ post::co_post_collapser(post = post, expand = expand) }}
 </div>
 {% endmacro co_thread_item %}
 
@@ -170,7 +268,7 @@
     {% else %}
     <hr class="co-hairline" />
     <div id="post-{{ post.postId }}"></div>
-    {{ post::co_post_contents(post = post, expand = expand) }}
+    {{ post::co_post_collapser(post = post, expand = expand) }}
     {% endif %}
 
     <hr class="co-hairline" />

@@ -1,3 +1,46 @@
+for (const postCollapser of document.querySelectorAll('.co-post-collapser')) {
+    const cssState = /** @type {HTMLInputElement} */ postCollapser.querySelector('.i-expanded-state');
+    let isOpen = cssState.checked;
+    cssState.remove();
+
+    const collapsed = [...postCollapser.children].find((c) => c.classList.contains('i-collapsed'));
+    const expanded = [...postCollapser.children].find((c) => c.classList.contains('i-expanded'));
+
+    const render = () => {
+        if (isOpen && collapsed.parentNode) collapsed.remove();
+        if (!isOpen && expanded.parentNode) expanded.remove();
+        if (isOpen && !expanded.parentNode) postCollapser.append(expanded);
+        if (!isOpen && !collapsed.parentNode) postCollapser.append(collapsed);
+    };
+
+    let expand = collapsed.querySelector('.i-expand-collapsed-button');
+    let collapse = expanded.querySelector('.i-collapse-button');
+
+    for (const label of [expand, collapse]) {
+        const button = document.createElement('button');
+        button.className = label.className;
+        button.textContent = label.textContent;
+
+        label.replaceWith(button);
+
+        if (label === expand) expand = button;
+        else collapse = button;
+    }
+
+    expand.addEventListener('click', () => {
+        isOpen = true;
+        render();
+    });
+
+    collapse.addEventListener('click', () => {
+        isOpen = false;
+        render();
+    });
+
+    postCollapser.classList.remove('has-css-state');
+    render();
+}
+
 for (const expandable of document.querySelectorAll('.co-post-contents > .i-expandable')) {
     const cssState = /** @type {HTMLInputElement} */ expandable.querySelector('.i-expanded-state');
     let isOpen = cssState.checked;

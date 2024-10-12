@@ -597,17 +597,21 @@ impl PostQuery {
 
         let exclude_synonyms_1 = rel_tags::related_tags
             .filter(rel_tags::tag1.eq_any(self.exclude_tags.clone()))
+            .filter(rel_tags::is_synonym.eq(1))
             .select(rel_tags::tag2);
         let exclude_synonyms_2 = rel_tags::related_tags
             .filter(rel_tags::tag2.eq_any(self.exclude_tags.clone()))
+            .filter(rel_tags::is_synonym.eq(1))
             .select(rel_tags::tag1);
 
         if !self.include_tags.is_empty() {
             let include_synonyms_1 = rel_tags::related_tags
                 .filter(rel_tags::tag1.eq_any(self.include_tags.clone()))
+                .filter(rel_tags::is_synonym.eq(1))
                 .select(rel_tags::tag2);
             let include_synonyms_2 = rel_tags::related_tags
                 .filter(rel_tags::tag2.eq_any(self.include_tags.clone()))
+                .filter(rel_tags::is_synonym.eq(1))
                 .select(rel_tags::tag1);
 
             let tagged_posts = tags::post_tags
