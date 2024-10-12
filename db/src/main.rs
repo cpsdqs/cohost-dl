@@ -136,6 +136,12 @@ fn init() -> anyhow::Result<(Config, SqliteConnection)> {
 }
 
 async fn interactive() {
+    // set cwd to binary location in interactive mode because we can probably assume the user
+    // launched it by double-clicking the binary, which would have cwd ~ by default.
+    let mut bin_dir = current_exe().expect("could not determine current path");
+    bin_dir.pop();
+    env::set_current_dir(bin_dir).expect("could not set current path");
+
     if let Err(e) = interactive_impl().await {
         eprintln!("{e:?}");
         process::exit(1);
@@ -234,6 +240,7 @@ async fn interactive_impl() -> anyhow::Result<()> {
 }
 
 async fn interactive_setup() -> anyhow::Result<()> {
+    let cwd = env::current_dir()?;
     let mut config = toml_edit::DocumentMut::from_str(TEMPLATE_CONFIG)?;
 
     println!("-- cohost-dl 2 interactive setup --");
@@ -267,7 +274,13 @@ async fn interactive_setup() -> anyhow::Result<()> {
         }
         abs_path.set_extension("db");
 
-        let Some(abs_path_str) = abs_path.to_str() else {
+        let maybe_rel_path = if let Ok(path) = abs_path.strip_prefix(&cwd) {
+            PathBuf::from(path)
+        } else {
+            abs_path.clone()
+        };
+
+        let Some(path_str) = maybe_rel_path.to_str() else {
             println!("This file path contains invalid UTF-8. This is not supported, sorry!");
             continue;
         };
@@ -283,7 +296,7 @@ async fn interactive_setup() -> anyhow::Result<()> {
 
         let ok = interactive_yn("Is this ok?")?;
         if ok {
-            break abs_path_str.to_string();
+            break path_str.to_string();
         }
     };
 
@@ -308,12 +321,18 @@ async fn interactive_setup() -> anyhow::Result<()> {
             continue;
         }
 
-        let Some(abs_path_str) = abs_path.to_str() else {
+        let maybe_rel_path = if let Ok(path) = abs_path.strip_prefix(&cwd) {
+            PathBuf::from(path)
+        } else {
+            abs_path.clone()
+        };
+
+        let Some(path_str) = maybe_rel_path.to_str() else {
             println!("This file path contains invalid UTF-8. This is not supported, sorry!");
             continue;
         };
 
-        if abs_path_str == database {
+        if path_str == database {
             println!(
                 "This folder path cannot be used because that’s where the database will be stored."
             );
@@ -331,7 +350,7 @@ async fn interactive_setup() -> anyhow::Result<()> {
 
         let ok = interactive_yn("Is this ok?")?;
         if ok {
-            break abs_path_str.to_string();
+            break path_str.to_string();
         }
     };
 
@@ -468,6 +487,14 @@ async fn interactive_setup() -> anyhow::Result<()> {
     if start_dl {
         let (config, db) = init()?;
         dl::download(config, db).await;
+
+        let serve = interactive_yn("Open results in your browser?")?;
+        if serve {
+            let (config, db) = init()?;
+            println!();
+            println!("You can press Ctrl + C to quit.");
+            serve_and_open(config, db).await;
+        }
     } else {
         println!("You can run the program again later to start downloading.");
     }
@@ -585,7 +612,7 @@ async fn interactive_has_config() -> anyhow::Result<()> {
             }
         })?;
 
-        let is_dl = choice == 2;
+        let is_dl = choice == 1;
 
         match init() {
             Ok((config, db)) => {
@@ -597,20 +624,21 @@ async fn interactive_has_config() -> anyhow::Result<()> {
                     sleep(Duration::from_millis(500)).await;
 
                     dl::download(config, db).await;
+
+                    let serve = interactive_yn("Open results in your browser?")?;
+                    if serve {
+                        let (config, db) = init()?;
+                        println!();
+                        println!("You can press Ctrl + C to quit.");
+                        serve_and_open(config, db).await;
+                    }
                     break Ok(());
                 } else {
                     println!("The wizard hands off to your web browser and leaves.");
                     println!();
                     println!("You can press Ctrl + C to quit.");
 
-                    let port = config.server_port;
-
-                    server::serve(config, db, || {
-                        if let Err(e) = webbrowser::open(&format!("http://localhost:{port}")) {
-                            eprintln!("could not open web browser: {e}");
-                        }
-                    })
-                    .await;
+                    serve_and_open(config, db).await;
                     break Ok(());
                 }
             }
@@ -621,4 +649,15 @@ async fn interactive_has_config() -> anyhow::Result<()> {
             }
         }
     }
+}
+
+async fn serve_and_open(config: Config, db: SqliteConnection) {
+    let port = config.server_port;
+
+    server::serve(config, db, || {
+        if let Err(e) = webbrowser::open(&format!("http://localhost:{port}")) {
+            eprintln!("could not open web browser: {e}");
+        }
+    })
+    .await;
 }

@@ -122,6 +122,15 @@ impl CohostContext {
         let temp_dir = root_dir.join("tmp");
         let _ = fs::create_dir_all(&temp_dir);
 
+        // we have to canonicalize these so that we get \\?\ file paths on Windows.
+        // this allows us to use long file paths
+        let root_dir = root_dir
+            .canonicalize()
+            .expect("could not canonicalize root directory");
+        let temp_dir = temp_dir
+            .canonicalize()
+            .expect("could not canonicalize temp directory");
+
         CohostContext {
             cookie,
             client,
@@ -391,6 +400,17 @@ impl CohostContext {
             }
 
             for seg in additional_path.split('/') {
+                let seg = if cfg!(target_os = "windows") {
+                    seg.chars()
+                        .map(|c| match c {
+                            '?' | '%' | '*' | ':' | '|' | '"' | '<' | '>' => '-',
+                            c => c,
+                        })
+                        .collect()
+                } else {
+                    seg.to_string()
+                };
+
                 if seg.len() > MAX_FILE_NAME_LENGTH_UTF8 {
                     let mut buf = String::new();
                     for c in seg.chars() {

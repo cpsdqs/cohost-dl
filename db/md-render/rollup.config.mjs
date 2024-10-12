@@ -4,9 +4,6 @@ import typescript from '@rollup/plugin-typescript';
 import replace from '@rollup/plugin-replace';
 import alias from '@rollup/plugin-alias';
 import json from '@rollup/plugin-json';
-import path from 'node:path';
-
-const dirname = path.dirname(new URL(import.meta.url).pathname);
 
 
 const EMOJI = {
@@ -77,8 +74,10 @@ export default {
         alias({
             entries: [
                 { find: 'stream', replacement: 'readable-stream' },
-                { find: 'util', replacement: path.join(dirname, 'src', 'patch_util.js') },
-                { find: 'css-tree', replacement: path.join(dirname, 'node_modules', 'css-tree', 'dist', 'csstree.esm.js') },
+                // Rollup will complain about these relative paths, but this is the only way to compile on Windows.
+                // I don’t know why. The output file hashes are the same, so I guess it’s fine.
+                { find: 'util', replacement: './src/patch_util.js' },
+                { find: 'css-tree', replacement: './node_modules/css-tree/dist/csstree.esm.js' },
             ]
         }),
         typescript(),

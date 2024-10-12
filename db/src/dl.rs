@@ -603,6 +603,7 @@ async fn par_load_resources<T: Send + Sync>(
                         Ok(res) => break Ok(res),
                         Err(e) if e.is_recoverable() && tries < MAX_RETRIES => {
                             let wait = 1.8_f64.powf(tries as f64) - 1.;
+                            warn!("could not load: {e}");
                             info!(
                                 "try {} for {}: waiting for {wait:.02}s before continuing to be polite",
                                 tries + 1,

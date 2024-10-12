@@ -16,11 +16,9 @@ Files:
 - the output directory: stores all resources like images
 - downloader-state.json: file to remember what’s already been downloaded before and skip downloading those things (can be edited)
 
-## WIP Usage
-Beware: this is kinda unfinished
-
 > Note: if you have used cohost-dl 2 before, you should probably run it again with the `try_fix_transparent_shares` option.
 
+## Compiling and running from source
 1. compile the post & markdown renderer. this is super jank. it currently requires running cohost-dl 1 as well
     - if ASSC ever ships an open source post renderer, this will be replaced with that
     - if you don’t care about serve mode, just make an empty `md-render/compiled.js` file so the Rust code compiles
