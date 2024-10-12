@@ -2087,6 +2087,14 @@ body {
             text-decoration: underline;
         }
     }
+
+    > .i-liked {
+        > .i-heart {
+            width: 1.5rem;
+            height: 1.5rem;
+            color: rgb(var(--color-cherry));
+        }
+    }
 }
 
 .co-comments {
@@ -2329,6 +2337,12 @@ body {
 
     > .i-spacer {
         flex: 1;
+    }
+}
+
+@media (min-width: 1024px) {
+    .feed-posts .co-pagination-eggs {
+        margin-left: 5rem;
     }
 }
 

@@ -36,8 +36,10 @@ templates! {
     TEMPLATES;
     "base.html",
     "comments.html",
+    "dashboard.html",
     "error.html",
     "index.html",
+    "liked_feed.html",
     "pagination_eggs.html",
     "post.html",
     "project_profile.html",

@@ -176,7 +176,7 @@ impl PageRenderer {
             rendered_posts,
             max_page,
         } = self
-            .get_rendered_posts(db, &post_query)
+            .get_rendered_posts(db, 0, &post_query)
             .await
             .map_err(|e| RenderProjectProfileError::Unknown(e.into()))?;
 

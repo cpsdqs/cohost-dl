@@ -362,6 +362,34 @@ impl Database {
             .select(projects::handle)
             .load(db)
     }
+
+    pub async fn project_handles_who_liked_posts(&self) -> QueryResult<Vec<String>> {
+        use crate::schema::likes::dsl as likes;
+        use crate::schema::projects::dsl as projects;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        projects::projects
+            .filter(projects::id.eq_any(likes::likes.select(likes::from_project_id)))
+            .order_by(projects::handle)
+            .select(projects::handle)
+            .load(db)
+    }
+
+    pub async fn project_handles_with_follows(&self) -> QueryResult<Vec<String>> {
+        use crate::schema::follows::dsl as follows;
+        use crate::schema::projects::dsl as projects;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        projects::projects
+            .filter(projects::id.eq_any(follows::follows.select(follows::from_project_id)))
+            .order_by(projects::handle)
+            .select(projects::handle)
+            .load(db)
+    }
 }
 
 /// Post queries
@@ -541,6 +569,7 @@ pub struct PostQuery {
     pub posting_project_id: Option<u64>,
     pub share_of_post_id: Option<u64>,
     pub is_liked_by: Option<u64>,
+    pub is_dashboard_for: Option<u64>,
     pub include_tags: Vec<String>,
     pub exclude_tags: Vec<String>,
     pub is_ask: Option<bool>,
@@ -558,6 +587,7 @@ impl Default for PostQuery {
             posting_project_id: None,
             share_of_post_id: None,
             is_liked_by: None,
+            is_dashboard_for: None,
             include_tags: Vec::new(),
             exclude_tags: Vec::new(),
             is_ask: None,
@@ -579,6 +609,7 @@ impl PostQuery {
         diesel::internal::table_macro::FromClause<crate::schema::posts::table>,
         diesel::sqlite::Sqlite,
     > {
+        use crate::schema::follows::dsl as follows;
         use crate::schema::likes::dsl as likes;
         use crate::schema::post_tags::dsl as tags;
         use crate::schema::posts::dsl as posts;
@@ -647,7 +678,20 @@ impl PostQuery {
             let likes = likes::likes
                 .filter(likes::from_project_id.eq(is_liked_by as i32))
                 .select(likes::to_post_id);
-            query = query.filter(posts::id.eq_any(likes));
+            query = query
+                .filter(posts::is_transparent_share.eq(false))
+                .filter(posts::id.eq_any(likes));
+        }
+
+        if let Some(project) = self.is_dashboard_for {
+            let follows = follows::follows
+                .filter(follows::from_project_id.eq(project as i32))
+                .select(follows::to_project_id);
+            query = query.filter(
+                posts::posting_project_id
+                    .eq_any(follows)
+                    .or(posts::posting_project_id.eq(project as i32)),
+            );
         }
 
         if let Some(is_ask) = self.is_ask {

@@ -39,6 +39,8 @@ pub async fn serve(config: Config, db: SqliteConnection, on_listen: impl FnOnce(
         .route("/:project/post/:post", get(get_single_post))
         .route("/:project", get(get_profile))
         .route("/:project/tagged/:tag", get(get_profile_tagged))
+        .route("/:project/liked-posts", get(get_liked))
+        .route("/:project/dashboard", get(get_dashboard))
         .route("/api/post/:post", get(api_get_post))
         .route("/r/:proto/:domain/*url", get(get_resource))
         .route("/r/:proto/:domain/", get(get_resource))
@@ -132,9 +134,43 @@ async fn get_global_tagged(
         .page_renderer
         .render_tag_feed(&state.db, uri.path(), &tag, query)
         .await
-        .map_err(|e| {
-            render_error_page(&state, StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
-        })?;
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_liked(
+    State(state): State<SharedServerState>,
+    Path(project): Path<String>,
+    Query(query): Query<TagFeedQuery>,
+) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_liked_feed(&state.db, &project, query)
+        .await
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/html; charset=utf-8")
+        .body(Body::new(body))
+        .unwrap())
+}
+
+async fn get_dashboard(
+    State(state): State<SharedServerState>,
+    Path(project): Path<String>,
+    Query(query): Query<TagFeedQuery>,
+) -> response::Result<Response> {
+    let body = state
+        .page_renderer
+        .render_dashboard(&state.db, &project, query)
+        .await
+        .map_err(|e| render_error_page(&state, e.status(), format!("{e}")))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)

@@ -1,0 +1,23 @@
+{% import "post.html" as post %}
+{% import "pagination_eggs.html" as pagination_eggs %}
+{% extends "base.html" %}
+
+{% block title %}
+cohost archive! - posts you’ve liked
+{% endblock title %}
+
+{% block base_contents %}
+<div class="i-large-nav-spacer"></div>
+
+<div class="page-contents">
+    <div class="feed-posts">
+        {% for post in posts %}
+        {{ post::render_preview(post = post) }}
+        {% endfor %}
+
+        {{ pagination_eggs::pagination_eggs(base = "", prev_page = filter_state.onPrevPage, next_page = filter_state.onNextPage) }}
+    </div>
+</div>
+
+<div class="feed-sidebar-alt"></div>
+{% endblock base_contents %}

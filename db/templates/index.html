@@ -5,8 +5,39 @@ cohost archive!
 {% endblock title %}
 
 {% block base_contents %}
+<style>
+    h1 {
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+    h2 {
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-top: 1rem;
+    }
+    a {
+        text-decoration: underline;
+    }
+</style>
 <div class="page-contents">
     <h1>cohost-dl temporary index page</h1>
+    <h2>dashboards</h2>
+    <ul>
+        {% for project in projects_with_dashboards %}
+        <li>
+            <a href="{{ project }}/dashboard">@{{ project }}’s dashboard</a>
+        </li>
+        {% endfor %}
+    </ul>
+    <h2>liked post feeds</h2>
+    <ul>
+        {% for project in projects_who_liked_posts %}
+        <li>
+            <a href="/{{ project }}/liked-posts">@{{ project }}’s likes</a>
+        </li>
+        {% endfor %}
+    </ul>
+    <h2>all archived projects</h2>
     <ul>
         {% for project in projects %}
         <li>

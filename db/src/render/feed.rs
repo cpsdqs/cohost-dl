@@ -1,10 +1,11 @@
 use crate::data::{Database, PostQuery};
 use crate::post::PostFromCohost;
-use crate::render::api_data::{cohost_api_post, GetDataError};
+use crate::render::api_data::{cohost_api_post, cohost_api_project, GetDataError};
 use crate::render::md_render::{PostRenderRequest, PostRenderResult};
 use crate::render::rewrite::rewrite_projects_in_post;
 use crate::render::PageRenderer;
 use chrono::Utc;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tera::Context;
@@ -20,6 +21,7 @@ impl PageRenderer {
     pub async fn get_rendered_posts(
         &self,
         db: &Database,
+        viewer_id: u64,
         post_query: &PostQuery,
     ) -> Result<RenderedPosts, GetDataError> {
         let post_ids = post_query.get(db).await?;
@@ -32,7 +34,7 @@ impl PageRenderer {
         let mut rendered_posts = HashMap::with_capacity(post_ids.len());
 
         for post in post_ids {
-            let mut post = cohost_api_post(db, 0, post).await?;
+            let mut post = cohost_api_post(db, viewer_id, post).await?;
 
             for post in std::iter::once(&post).chain(post.share_tree.iter()) {
                 let resources = db.get_saved_resource_urls_for_post(post.post_id).await?;
@@ -75,6 +77,15 @@ pub enum RenderFeedError {
     Data(#[from] GetDataError),
     #[error(transparent)]
     Render(#[from] tera::Error),
+}
+
+impl RenderFeedError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Self::Data(GetDataError::NotFound) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -196,7 +207,7 @@ impl PageRenderer {
             posts,
             rendered_posts,
             max_page,
-        } = self.get_rendered_posts(db, &post_query).await?;
+        } = self.get_rendered_posts(db, 0, &post_query).await?;
 
         let mut template_ctx = Context::new();
         template_ctx.insert("tag", &canon_tag);
@@ -210,6 +221,88 @@ impl PageRenderer {
         template_ctx.insert("filter_state", &query.to_filter_state(path, max_page));
 
         let body = self.tera.render("tag_feed.html", &template_ctx)?;
+
+        Ok(body)
+    }
+
+    pub async fn render_liked_feed(
+        &self,
+        db: &Database,
+        project: &str,
+        // just re-use this. it's a subset
+        query: TagFeedQuery,
+    ) -> Result<String, RenderFeedError> {
+        let project_id = db
+            .project_id_for_handle(project)
+            .await
+            .map_err(|e| GetDataError::from(e))?;
+
+        let project = cohost_api_project(db, project_id, project_id).await?;
+
+        let post_query = PostQuery {
+            offset: query.page * 20,
+            limit: 20,
+            is_liked_by: Some(project_id),
+            ..Default::default()
+        };
+
+        let RenderedPosts {
+            posts,
+            rendered_posts,
+            max_page,
+        } = self.get_rendered_posts(db, project_id, &post_query).await?;
+
+        let mut template_ctx = Context::new();
+        template_ctx.insert("project", &project);
+
+        template_ctx.insert("posts", &posts);
+        template_ctx.insert("rendered_posts", &rendered_posts);
+
+        let path = format!("/{}/liked-posts", project.handle);
+        template_ctx.insert("filter_state", &query.to_filter_state(&path, max_page));
+
+        let body = self.tera.render("liked_feed.html", &template_ctx)?;
+
+        Ok(body)
+    }
+
+    pub async fn render_dashboard(
+        &self,
+        db: &Database,
+        project: &str,
+        // just re-use this. it's a subset
+        query: TagFeedQuery,
+    ) -> Result<String, RenderFeedError> {
+        let project_id = db
+            .project_id_for_handle(project)
+            .await
+            .map_err(|e| GetDataError::from(e))?;
+
+        let project = cohost_api_project(db, project_id, project_id).await?;
+
+        let post_query = PostQuery {
+            offset: query.page * 20,
+            limit: 20,
+            is_dashboard_for: Some(project_id),
+            ..Default::default()
+        };
+
+        let RenderedPosts {
+            posts,
+            rendered_posts,
+            max_page,
+        } = self.get_rendered_posts(db, project_id, &post_query).await?;
+
+        let mut template_ctx = Context::new();
+        template_ctx.insert("project", &project);
+
+        template_ctx.insert("posts", &posts);
+        template_ctx.insert("rendered_posts", &rendered_posts);
+
+        let path = format!("/{}/dashboard", project.handle);
+        template_ctx.insert("filter_state", &query.to_filter_state(&path, max_page));
+
+        let body = self.tera.render("dashboard.html", &template_ctx)?;
 
         Ok(body)
     }

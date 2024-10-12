@@ -134,6 +134,12 @@ function rewriteAttachment(attachment: AttachmentViewBlock, resources: string[])
             ?? attachment.attachment.fileURL.split('/').find(p => p.match(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)),
     };
 
+    if (inner.kind === "audio") {
+        // must not be null
+        inner.artist = inner.artist ?? '';
+        inner.title = inner.title ?? '';
+    }
+
     if (resources.includes(inner.fileURL)) {
         inner.fileURL = makeResourceURL(inner.fileURL);
     }

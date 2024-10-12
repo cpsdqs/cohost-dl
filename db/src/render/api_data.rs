@@ -90,7 +90,11 @@ pub async fn cohost_api_post(
         None
     };
 
-    let is_liked = db.is_liked(viewer_id, post_id).await?;
+    let is_liked = if viewer_id != 0 {
+        db.is_liked(viewer_id, post_id).await?
+    } else {
+        false
+    };
 
     let posting_project = cohost_api_project(db, viewer_id, post.posting_project_id as u64).await?;
 
