@@ -1,7 +1,14 @@
 # cohost-dl 2: DL harder
-cohost-dl but downloading a lot more data and with even less usability
+cohost-dl but downloading a lot more data but less faithfully
 
-Notes:
+[website with precompiled binary downloads](https://cloudwithlightning.net/random/chostin/cohost-dl)
+
+- Post pages are *not* downloaded exactly as they appear on Cohost.
+  Instead, this tool downloads only the data, and then re-creates something close to what they looked like on Cohost.
+- Can download your own posts, your liked posts, your dashboard, and tag feeds
+- Legal: using this software does not somehow grant you a license to re-publish posts and comments from other people
+
+Usage Notes:
 - You can interrupt this at any time, but if it’s doing something where there’s no progress bar, it’ll start over from page 1.
   This is probably annoying if you were on, like, page 200.
 - I am not very good at SQL
