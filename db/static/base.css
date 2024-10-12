@@ -2104,6 +2104,10 @@ body {
     }
 }
 
+#comments {
+    min-width: 0;
+}
+
 .co-comments {
     margin: 0.75rem 0;
     display: flex;

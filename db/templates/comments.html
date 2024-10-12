@@ -2,6 +2,7 @@
 {% set date_fmt_title = "%a, %b %-d, %Y, %-I:%M %p" %}
 {% set date_fmt_text = "%-m/%-d/%Y, %-I:%M %p" %}
 <article class="co-comment-item" id="comment-{{ comment.comment.commentId }}">
+    {% if comment.poster %}
     <a
         class="i-big-avatar co-drop-shadow"
         href="/{{ comment.poster.handle }}"
@@ -13,8 +14,10 @@
             alt="{{ comment.poster.handle }}"
         />
     </a>
+    {% endif %}
     <div class="i-comment">
         <div class="i-header">
+            {% if comment.poster %}
             <img
                 class="i-avatar co-avatar"
                 data-shape="{{ comment.poster.avatarShape }}"
@@ -39,6 +42,9 @@
             >
                 @{{ comment.poster.handle }}
             </a>
+            {% else %}
+            [deleted]
+            {% endif %}
 
             <time
                 class="i-timestamp"
