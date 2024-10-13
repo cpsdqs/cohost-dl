@@ -79,6 +79,8 @@ pub struct Config {
     pub load_project_resources: bool,
     #[serde(default)]
     pub load_comment_resources: bool,
+    #[serde(default)]
+    pub forget_missing_url_files: bool,
     pub server_port: u16,
 }
 

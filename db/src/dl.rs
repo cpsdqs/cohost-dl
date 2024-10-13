@@ -9,7 +9,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -824,7 +824,10 @@ async fn load_comment_resources(
     Ok(())
 }
 
-async fn migrate_resource_file_paths(ctx: &CohostContext) -> anyhow::Result<()> {
+async fn migrate_resource_file_paths(
+    ctx: &CohostContext,
+    forget_missing: bool,
+) -> anyhow::Result<()> {
     let total_count = ctx.total_url_file_count().await?;
 
     let progress = ProgressBar::new(total_count);
@@ -852,6 +855,24 @@ async fn migrate_resource_file_paths(ctx: &CohostContext) -> anyhow::Result<()> 
 
             let intended_path = intended_path.strip_prefix(&ctx.root_dir)?;
 
+            let from_path = ctx.root_dir.join(&path);
+            if !from_path.exists() {
+                if forget_missing {
+                    error!("resource file has gone missing. deleting entry for:\n{}", from_path.display());
+                    ctx.remove_url_file(&url).await?;
+                    offset -= 1;
+                    continue;
+                } else {
+                    error!("resource file has gone missing:\n{}", from_path.display());
+                    error!("if you did this on purpose, you can run the program again with the following config.toml option:
+
+forget_missing_url_files = true
+
+to forget them from the database. Skipping for now!");
+                    continue;
+                }
+            }
+
             if path != intended_path {
                 trace!(
                     "migrating resource file {} -> {}",
@@ -859,9 +880,18 @@ async fn migrate_resource_file_paths(ctx: &CohostContext) -> anyhow::Result<()> 
                     intended_path.display()
                 );
 
-                let from_path = ctx.root_dir.join(path);
                 let to_path = ctx.root_dir.join(intended_path);
-                fs::rename(from_path, to_path)?;
+
+                let mut to_path_dir = to_path.clone();
+                to_path_dir.pop();
+
+                fs::create_dir_all(to_path_dir)?;
+                fs::rename(&from_path, &to_path)?;
+
+                if let Err(e) = remove_empty_dirs(&ctx.root_dir, &path) {
+                    warn!("could not clean up empty directories while migrating file from {}: {e}", from_path.display());
+                }
+
                 ctx.insert_url_file(&url, intended_path).await?;
                 migrated += 1;
             }
@@ -874,6 +904,22 @@ async fn migrate_resource_file_paths(ctx: &CohostContext) -> anyhow::Result<()> 
 
     progress.finish_and_clear();
 
+    Ok(())
+}
+
+fn remove_empty_dirs(base: &Path, path: &Path) -> anyhow::Result<()> {
+    let mut path = PathBuf::from(path);
+    while path.components().count() > 0 {
+        path.pop();
+
+        let maybe_rm_dir = base.join(&path);
+        if maybe_rm_dir.exists() {
+            let is_empty = fs::read_dir(&maybe_rm_dir)?.next().is_none();
+            if is_empty {
+                fs::remove_dir(maybe_rm_dir)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1013,7 +1059,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
         ok_or_quit(fix_bad_transparent_shares(&ctx, &state, &login).await);
     }
 
-    ok_or_quit(migrate_resource_file_paths(&ctx).await);
+    ok_or_quit(migrate_resource_file_paths(&ctx, config.forget_missing_url_files).await);
 
     ok_or_quit(load_cohost_resources(&ctx, &state).await);
 

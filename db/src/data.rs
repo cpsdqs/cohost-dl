@@ -1579,6 +1579,21 @@ impl Database {
 
         Ok(())
     }
+
+    pub async fn remove_url_file(&self, orig_url: &Url) -> anyhow::Result<()> {
+        use crate::schema::url_files::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let orig_url = orig_url.to_string();
+
+        diesel::delete(url_files)
+            .filter(url.eq(orig_url))
+            .execute(db)?;
+
+        Ok(())
+    }
 }
 
 impl Database {
