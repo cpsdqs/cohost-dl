@@ -41,10 +41,20 @@ export async function readDataPortabilityArchiveItems(dpaPath: string): Promise<
     const asksDir = path.join(dpaPath, "asks");
     const asks: IDPAAsk[] = [];
 
-    for await (const item of Deno.readDir(asksDir)) {
-        if (item.isFile && item.name.endsWith('.json')) {
-            const text = await Deno.readTextFile(path.join(asksDir, item.name));
-            asks.push(JSON.parse(text) as IDPAAsk);
+    let hasAsksDir = false;
+    try {
+        await Deno.stat(asksDir);
+        hasAsksDir = true;
+    } catch {
+        // probably fine
+    }
+
+    if (hasAsksDir) {
+        for await (const item of Deno.readDir(asksDir)) {
+            if (item.isFile && item.name.endsWith('.json')) {
+                const text = await Deno.readTextFile(path.join(asksDir, item.name));
+                asks.push(JSON.parse(text) as IDPAAsk);
+            }
         }
     }
 
