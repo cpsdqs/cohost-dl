@@ -112,7 +112,7 @@ index 7957cab..4463485 100644
      CheckCircleIcon,
      ExclamationTriangleIcon,
 diff --git a/preact/components/lightbox.tsx b/preact/components/lightbox.tsx
-index a6be975..d35e472 100644
+index a6be975..e81dcdf 100644
 --- a/preact/components/lightbox.tsx
 +++ b/preact/components/lightbox.tsx
 @@ -1,6 +1,5 @@
@@ -133,6 +133,15 @@ index a6be975..d35e472 100644
  export type LightboxImage = {
      src: string;
      alt?: string;
+@@ -25,7 +26,7 @@ export type LightboxImage = {
+     thumbnail?: string;
+ };
+ 
+-const Lightbox = createContext<{
++export const Lightbox = createContext<{
+     openLightbox: (postId: PostId, attachmentId: AttachmentId) => void;
+     closeLightbox: () => void;
+     setLightboxContentForPost: (
 diff --git a/preact/components/loading.tsx b/preact/components/loading.tsx
 index 3aa44a8..cfceeb8 100644
 --- a/preact/components/loading.tsx
@@ -220,7 +229,7 @@ index 1ab442f..4cd0637 100644
          );
          let displayTitle = pathEntries[pathEntries.length - 1];
 diff --git a/preact/components/posts/blocks/attachments/image.tsx b/preact/components/posts/blocks/attachments/image.tsx
-index b486d22..1686b3c 100644
+index b486d22..81de6fd 100644
 --- a/preact/components/posts/blocks/attachments/image.tsx
 +++ b/preact/components/posts/blocks/attachments/image.tsx
 @@ -5,11 +5,11 @@ import React, {
@@ -239,6 +248,31 @@ index b486d22..1686b3c 100644
  
  export const ImageAttachment: BlockComponent<AttachmentViewBlock> = ({
      block,
+@@ -43,7 +43,14 @@ export const ImageAttachment: BlockComponent<AttachmentViewBlock> = ({
+     }
+ 
+     return (
+-        <button
++        <div // nesting buttons is invalid HTML
++            role="button"
++            tabIndex={0}
++            onKeyDown={e => {
++                if (e.key === ' ' || e.key === 'Enter') {
++                    e.currentTarget.click();
++                }
++            }}
+             onClick={onClick}
+             className="group relative w-full flex-initial"
+         >
+@@ -64,7 +71,7 @@ export const ImageAttachment: BlockComponent<AttachmentViewBlock> = ({
+                     onPause={handlePause}
+                 />
+             ) : null}
+-        </button>
++        </div>
+     );
+ };
+ 
 diff --git a/preact/components/posts/blocks/custom-emoji.tsx b/preact/components/posts/blocks/custom-emoji.tsx
 index 25dbbcb..3507a42 100644
 --- a/preact/components/posts/blocks/custom-emoji.tsx

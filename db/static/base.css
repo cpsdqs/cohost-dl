@@ -2400,6 +2400,10 @@ body {
         position: relative;
     }
 
+    .absolute {
+        position: absolute;
+    }
+
     .flex {
         display: flex;
     }
@@ -2436,6 +2440,14 @@ body {
         align-items: center;
     }
 
+    .bottom-3 {
+        bottom: 0.75rem;
+    }
+
+    .right-3 {
+        right: 0.75rem;
+    }
+
     .w-6 {
         width: 1.5rem;
     }
@@ -2447,6 +2459,11 @@ body {
     .w-9 {
         width: 2.25rem;
     }
+
+    .w-12 {
+        width: 3rem;
+    }
+
 
     .w-full {
         width: 100%;
@@ -2575,6 +2592,35 @@ body {
 
     .tabular-nums {
         font-variant-numeric: tabular-nums;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .fill-notBlack {
+        fill: rgb(var(--color-notBlack));
+        color: rgb(var(--color-notWhite));
+    }
+
+    .opacity-90 {
+        opacity: 0.9;
+    }
+
+    .hover\:opacity-100:hover {
+        opacity: 1;
+    }
+
+    .group:hover .group-hover\:block {
+        display: block;
+    }
+}
+
+@media (hover: none) {
+    .co-post-contents, .prose, .prose-stone {
+        .no-hover\:block {
+            display: block;
+        }
     }
 }
 
@@ -2803,4 +2849,132 @@ body {
     .co-drop-shadow {
         filter: drop-shadow(0px 4px 5px rgba(0, 0, 0, 0.14)) drop-shadow(0px 1px 10px rgba(0, 0, 0, 0.12)) drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
     }
+}
+
+.attachment-lightbox {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    background: none;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+
+    &::backdrop {
+        opacity: 0;
+    }
+
+    > .i-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgb(var(--color-notBlack));
+    }
+
+    > .i-container {
+        position: relative;
+        padding: 2rem 0;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+
+        > .i-top {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+
+            > .i-attachment {
+                display: block;
+                min-height: 0;
+                max-height: calc(100vh - 14rem);
+                margin: 0 auto;
+                object-fit: scale-down;
+                view-transition-name: attachment-lightbox-attachment;
+            }
+
+            &[data-count="1"] > .i-attachment {
+                max-height: calc(100vh - 4rem);
+            }
+
+            > .i-pagination {
+                width: 100%;
+                max-width: 65ch;
+                padding: 0.5rem;
+                margin: 0;
+
+                .i-button {
+                    margin: 0;
+                }
+
+                .i-egg {
+                    background: rgb(var(--color-cherry));
+                    color: rgb(var(--color-notWhite));
+                }
+            }
+
+            > .i-alt-text {
+                color: rgb(var(--color-notWhite));
+                padding: 0.75rem;
+                margin: 0 auto;
+                max-width: 65ch;
+                text-align: center;
+                font-style: italic;
+            }
+        }
+
+        > .i-bottom {
+            display: flex;
+            flex-shrink: 0;
+            align-items: center;
+            gap: 1rem;
+            max-width: 100%;
+
+            > .i-item {
+                min-width: 0;
+            }
+
+            > .i-item > .i-button {
+                width: 4rem;
+                max-width: 100%;
+                height: 4rem;
+                border-radius: 0.5rem;
+                overflow: hidden;
+                box-shadow: 0 4px 5px rgba(0, 0, 0, .14), 0 1px 10px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .2);
+
+                &[data-selected="true"] {
+                    width: calc(4rem + 4px);
+                    height: calc(4rem + 4px);
+                    border: 2px solid rgb(var(--color-cherry));
+                }
+
+                > .i-preview {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+            }
+        }
+    }
+}
+
+.attachment-lightbox-opening-from-this {
+    view-transition-name: attachment-lightbox-attachment;
+}
+
+::view-transition-old(attachment-lightbox-attachment),
+::view-transition-new(attachment-lightbox-attachment) {
+    width: 100%;
+    height: 100%;
+}
+::view-transition-new(attachment-lightbox-attachment) {
+    animation: none;
 }

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022", "WebWorker"],
+    "lib": ["ES2022", "WebWorker", "DOM"],
     "target": "ES2022",
     "strict": false,
     "module": "ES2022",

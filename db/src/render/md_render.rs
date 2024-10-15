@@ -13,6 +13,7 @@ use tokio::sync::oneshot;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostRenderRequest {
+    pub post_id: u64,
     pub blocks: Vec<PostBlock>,
     pub published_at: String,
     pub has_cohost_plus: bool,
@@ -25,6 +26,7 @@ pub struct PostRenderResult {
     pub preview: String,
     pub full: Option<String>,
     pub class_name: String,
+    pub view_model: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

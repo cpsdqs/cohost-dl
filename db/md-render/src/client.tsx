@@ -1,5 +1,49 @@
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { PostBodyInner } from "./cohost/preact/components/posts/post-body";
+import { chooseAgeRuleset } from "./cohost/lib/markdown/sanitize";
+import { WirePostViewModel } from "./cohost/shared/types/wire-models";
+import { ReactNode } from "react";
+import { Lightbox } from "./cohost/preact/components/lightbox";
+import { globalLightboxContext, Lightbox2 } from "./lightbox2";
+
+const lightboxContainer = document.createElement('div');
+document.body.append(lightboxContainer);
+
+const lightboxRoot = createRoot(lightboxContainer);
+lightboxRoot.render(<Lightbox2 />);
+
+function LightboxProxy({ children }: { children: ReactNode }) {
+    return (
+        <Lightbox.Provider value={globalLightboxContext}>
+            {children}
+        </Lightbox.Provider>
+    );
+}
+
+for (const postContents of document.querySelectorAll('.co-post-contents')) {
+    const viewModel: Pick<WirePostViewModel, "blocks" | "astMap" | "postId" | "publishedAt"> = JSON.parse((postContents as HTMLDivElement).dataset.viewModel);
+    const ruleset = chooseAgeRuleset(new Date(viewModel.publishedAt));
+
+    for (const postBody of postContents.querySelectorAll('.i-post-body')) {
+        const isPreview = postBody.classList.contains('i-preview');
+        hydrateRoot(postBody,
+            <LightboxProxy>
+                <PostBodyInner
+                    viewModel={viewModel}
+                    renderUntilBlockIndex={
+                        isPreview
+                            ? (viewModel.astMap.readMoreIndex ?? null)
+                            : viewModel.blocks.length
+                    }
+                    ruleset={ruleset}
+                />
+            </LightboxProxy>
+        );
+    }
+}
+
 for (const postCollapser of document.querySelectorAll('.co-post-collapser')) {
-    const cssState = /** @type {HTMLInputElement} */ postCollapser.querySelector('.i-expanded-state');
+    const cssState = postCollapser.querySelector('.i-expanded-state') as HTMLInputElement;
     let isOpen = cssState.checked;
     cssState.remove();
 
@@ -42,7 +86,7 @@ for (const postCollapser of document.querySelectorAll('.co-post-collapser')) {
 }
 
 for (const expandable of document.querySelectorAll('.co-post-contents > .i-expandable')) {
-    const cssState = /** @type {HTMLInputElement} */ expandable.querySelector('.i-expanded-state');
+    const cssState = expandable.querySelector('.i-expanded-state') as HTMLInputElement;
     let isOpen = cssState.checked;
     cssState.remove();
 
@@ -88,7 +132,9 @@ for (const expandable of document.querySelectorAll('.co-post-contents > .i-expan
     render();
 }
 
-for (const details of document.querySelectorAll('.co-themed-titled-box.large\\:expanded')) {
+for (const details_ of document.querySelectorAll('.co-themed-titled-box.large\\:expanded')) {
+    const details = details_ as HTMLDetailsElement;
+
     const summary = details.querySelector('summary');
 
     let expanded = details.open;

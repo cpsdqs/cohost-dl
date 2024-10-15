@@ -248,7 +248,11 @@ async fn get_static(
 ) -> Response {
     if cfg!(debug_assertions) {
         // use static directory in debug mode
-        let cdl_static_file = PathBuf::from("static").join(&file_name);
+        let mut cdl_static_file = PathBuf::from("static").join(&file_name);
+        if !cdl_static_file.exists() {
+            cdl_static_file = PathBuf::from("md-render").join("dist").join(&file_name);
+        }
+
         match fs::metadata(&cdl_static_file).await {
             Ok(metadata) => {
                 return serve_static(&state, cdl_static_file, metadata, &headers, None).await;

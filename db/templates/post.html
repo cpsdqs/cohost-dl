@@ -72,7 +72,8 @@
 {% endmacro co_post_header %}
 
 {% macro co_post_contents(post, expand, skip_headline) %}
-<div class="co-post-contents">
+{%- set rendered = rendered_posts[post.postId] -%}
+<div class="co-post-contents" data-post-id="{{ post.postId }}" data-view-model="{{ rendered.viewModel }}">
     {%- if post.headline and not skip_headline %}
     <div class="i-headline">
         <a class="prose" href="/{{ post.postingProject.handle }}/post/{{ post.filename }}">
@@ -83,7 +84,6 @@
     </div>
     {% endif -%}
 
-    {%- set rendered = rendered_posts[post.postId] -%}
     {%- if rendered.full -%}
     <div class="i-expandable has-css-state">
         {% set id = "post-expanded-" ~ post.postId -%}
@@ -96,17 +96,17 @@
             {%- endif %}
         />
         <div class="i-post-body i-preview {{ rendered.className }}">
-            {{ rendered.preview | safe }}
+            {{- rendered.preview | safe -}}
             <label class="i-read-more co-read-more-read-less" for="{{ id }}">read more</label>
         </div>
         <div class="i-post-body i-full {{ rendered.className }}">
-            {{ rendered.full | safe }}
+            {{- rendered.full | safe -}}
             <label class="i-read-less co-read-more-read-less" for="{{ id }}">read less</label>
         </div>
     </div>
     {%- else -%}
     <div class="i-post-body {{ rendered.className }}">
-        {{ rendered.preview | safe }}
+        {{- rendered.preview | safe -}}
     </div>
     {%- endif -%}
 

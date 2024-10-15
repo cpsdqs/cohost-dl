@@ -11,6 +11,7 @@ import {
 import { PostId } from "./cohost/shared/types/ids";
 import { RenderingContext } from "./cohost/lib/markdown/shared-types";
 import { chooseAgeRuleset } from "./cohost/lib/markdown/sanitize";
+import { WirePostViewModel } from "./cohost/shared/types/wire-models";
 import { Element, Node, Parent, Root } from "hast";
 import { Image, Node as MdastNode, Parent as MdastParent, Root as MdastRoot } from "mdast";
 import { unified } from "unified";
@@ -24,6 +25,7 @@ import { generate as cssGenerate, parse as cssParse, walk as cssWalk } from "css
 import remarkBreaks from "remark-breaks";
 
 interface PostRenderRequest {
+    postId: number,
     blocks: ViewBlock[];
     publishedAt: string;
     hasCohostPlus: boolean;
@@ -34,6 +36,7 @@ interface PostResult {
     preview: string;
     full: string | null;
     className: string;
+    viewModel: Pick<WirePostViewModel, "blocks" | "astMap" | "postId">;
 }
 
 interface MarkdownRenderRequest {
@@ -270,7 +273,8 @@ export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
     const hasReadMore = postAst.readMoreIndex !== null;
 
     const viewModel = {
-        postId: 0 as PostId,
+        publishedAt: args.publishedAt,
+        postId: args.postId as PostId,
         blocks,
         astMap: postAst,
     };
@@ -294,7 +298,7 @@ export async function renderPost(args: PostRenderRequest): Promise<PostResult> {
         );
     }
 
-    return { preview, full, className: ruleset.className };
+    return { preview, full, className: ruleset.className, viewModel: JSON.stringify(viewModel) };
 }
 
 function rewriteHastPlugin(resources: string[]) {

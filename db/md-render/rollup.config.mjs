@@ -4,7 +4,7 @@ import typescript from '@rollup/plugin-typescript';
 import replace from '@rollup/plugin-replace';
 import alias from '@rollup/plugin-alias';
 import json from '@rollup/plugin-json';
-
+import terser from '@rollup/plugin-terser';
 
 const EMOJI = {
     "chunks.png": "f59b84127fa7b6c48b6c.png",
@@ -45,6 +45,7 @@ function convertEmoji(map) {
 }
 
 const banner = `
+if (!globalThis.process) globalThis.process = { env: {}, cwd: () => '/' };
 process.env.HOME_URL = 'https://cohost.org/';
 
 globalThis.require = {};
@@ -64,29 +65,45 @@ require.context = (dir, useSubdirs) => {
 };
 `;
 
-export default {
-    input: 'src/index.tsx',
-    output: {
-        banner,
-        file: 'compiled.js',
+const DEV = false;
+const CLIENT_ONLY = false;
+
+const plugins = [
+    alias({
+        entries: [
+            { find: 'stream', replacement: 'readable-stream' },
+            // Rollup will complain about these relative paths, but this is the only way to compile on Windows.
+            // I don’t know why. The output file hashes are the same, so I guess it’s fine.
+            { find: 'util', replacement: './src/patch_util.js' },
+            { find: 'css-tree', replacement: './node_modules/css-tree/dist/csstree.esm.js' },
+        ]
+    }),
+    typescript(),
+    json(),
+    replace({
+        "process.env.NODE_ENV": DEV ? "'development'" : "'production'",
+        preventAssignment: true,
+    }),
+    resolve({ preferBuiltins: false }),
+    commonjs(),
+];
+
+export default [
+    {
+        input: 'src/client.tsx',
+        output: {
+            banner,
+            format: 'iife',
+            dir: 'dist',
+        },
+        plugins: [...plugins, !DEV && terser()].filter(x => x),
     },
-    plugins: [
-        alias({
-            entries: [
-                { find: 'stream', replacement: 'readable-stream' },
-                // Rollup will complain about these relative paths, but this is the only way to compile on Windows.
-                // I don’t know why. The output file hashes are the same, so I guess it’s fine.
-                { find: 'util', replacement: './src/patch_util.js' },
-                { find: 'css-tree', replacement: './node_modules/css-tree/dist/csstree.esm.js' },
-            ]
-        }),
-        typescript(),
-        json(),
-        replace({
-            "process.env.NODE_ENV": "'production'",
-            preventAssignment: true,
-        }),
-        resolve({ preferBuiltins: false }),
-        commonjs(),
-    ],
-}
+    !CLIENT_ONLY && {
+        input: 'src/server-render.tsx',
+        output: {
+            banner,
+            dir: 'dist',
+        },
+        plugins,
+    },
+].filter(x => x);

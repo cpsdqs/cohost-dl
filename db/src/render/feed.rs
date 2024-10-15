@@ -42,6 +42,7 @@ impl PageRenderer {
                 let result = self
                     .md
                     .render_post(PostRenderRequest {
+                        post_id: post.post_id,
                         blocks: post.blocks.clone(),
                         published_at: post
                             .published_at
