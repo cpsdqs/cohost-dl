@@ -36,7 +36,7 @@ interface PostResult {
     preview: string;
     full: string | null;
     className: string;
-    viewModel: Pick<WirePostViewModel, "blocks" | "astMap" | "postId">;
+    viewModel: string;
 }
 
 interface MarkdownRenderRequest {

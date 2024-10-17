@@ -37,16 +37,28 @@ cohost archive! - {{ project.handle }}
     {% else %}
     <div class="project-profile-filters">
         <div class="i-filter" data-state="{{ filter_state.query.hideShares }}">
-            <a class="i-state" href="{{ b ~ filter_state.onShowShares }}">show shares</a>
-            <a class="i-state" href="{{ b ~ filter_state.onHideShares }}">hide shares</a>
+            <a class="i-state" href="{{ b ~ filter_state.onShowShares }}">
+                <span class="i-state">show</span> <span class="i-label">shares</span>
+            </a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideShares }}">
+                <span class="i-state">hide</span> <span class="i-label">shares</span>
+            </a>
         </div>
         <div class="i-filter" data-state="{{ filter_state.query.hideReplies }}">
-            <a class="i-state" href="{{ b ~ filter_state.onShowReplies }}">show replies</a>
-            <a class="i-state" href="{{ b ~ filter_state.onHideReplies }}">hide replies</a>
+            <a class="i-state" href="{{ b ~ filter_state.onShowReplies }}">
+                <span class="i-state">show</span> <span class="i-label">replies</span>
+            </a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideReplies }}">
+                <span class="i-state">hide</span> <span class="i-label">replies</span>
+            </a>
         </div>
         <div class="i-filter" data-state="{{ filter_state.query.hideAsks }}">
-            <a class="i-state" href="{{ b ~ filter_state.onShowAsks }}">show asks</a>
-            <a class="i-state" href="{{ b ~ filter_state.onHideAsks }}">hide asks</a>
+            <a class="i-state" href="{{ b ~ filter_state.onShowAsks }}">
+                <span class="i-state">show</span> <span class="i-label">asks</span>
+            </a>
+            <a class="i-state" href="{{ b ~ filter_state.onHideAsks }}">
+                <span class="i-state">hide</span> <span class="i-label">asks</span>
+            </a>
         </div>
     </div>
     {% endif %}

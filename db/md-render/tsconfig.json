@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ES2022", "WebWorker", "DOM"],
+    "lib": ["ES2022", "WebWorker", "DOM", "DOM.Iterable"],
     "target": "ES2022",
     "strict": false,
     "module": "ES2022",

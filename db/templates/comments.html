@@ -47,9 +47,9 @@
             {% endif %}
 
             <time
-                class="i-timestamp"
+                class="i-timestamp local-timestamp"
                 datetime="{{ comment.comment.postedAtISO }}"
-                title="{{ comment.comment.postedAtISO | date(format = date_fmt_title) }}"
+                title="{{ comment.comment.postedAtISO | date(format = date_fmt_title) }} UTC"
             >
                 <a href="/{{ post.postingProject.handle }}/post/{{ post.filename }}#comment-{{ comment.comment.commentId }}">
                     {{ comment.comment.postedAtISO | date(format = date_fmt_text) }}
