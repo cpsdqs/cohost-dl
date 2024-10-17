@@ -614,6 +614,11 @@ impl Config {
             1 => println!("- will load posts from 1 tag (if not already loaded)"),
             n => println!("- will load posts from {n} tags (if not already loaded)"),
         }
+        match self.load_specific_posts.len() {
+            0 => (),
+            1 => println!("- will load 1 specific post from URL (if not already loaded)"),
+            n => println!("- will load {n} specific posts from URLs (if not already loaded)"),
+        }
         if self.load_new_posts {
             println!("- will check every project for new posts");
         }
@@ -641,7 +646,7 @@ async fn interactive_has_config() -> anyhow::Result<()> {
     println!("(1) downloading data according to configuration");
     println!("(2) looking at downloaded data in your web browser");
     println!("---");
-    println!("(3) log in to cohost again");
+    println!("(3) logging in to cohost again (in case login stopped working)");
     println!("(4) importing data from cohost-dl 1");
     println!();
     println!("You can also type 'exit' to leave.");
