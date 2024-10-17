@@ -2,7 +2,7 @@ use crate::comment::CommentFromCohost;
 use crate::context::{CohostContext, GetError};
 use crate::dl::CurrentStateV1;
 use crate::feed::TagRelationship;
-use crate::post::{PostBlock, PostFromCohost};
+use crate::post::{PostBlock, PostFromCohost, PostState};
 use crate::project::{
     AvatarShape, LoggedOutPostVisibility, ProjectAskSettings, ProjectContactCard, ProjectFlag,
     ProjectFromCohost, ProjectPrivacy,
@@ -338,6 +338,18 @@ impl Database {
         Ok(result as u64)
     }
 
+    pub async fn has_project_id(&self, project_id: u64) -> QueryResult<bool> {
+        use crate::schema::projects::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let count: i64 = projects
+            .filter(id.eq(project_id as i32))
+            .count()
+            .get_result(db)?;
+        Ok(count > 0)
+    }
+
     pub async fn has_project_handle(&self, project_handle: &str) -> anyhow::Result<bool> {
         use crate::schema::projects::dsl::*;
         let mut db = self.db.lock().await;
@@ -561,6 +573,15 @@ impl Database {
             .filter(post_id.eq(the_post_id as i32))
             .order_by(published_at)
             .load(db)
+    }
+
+    pub async fn has_comment(&self, comment_id: &str) -> QueryResult<bool> {
+        use crate::schema::comments::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let count: i64 = comments.filter(id.eq(comment_id)).count().get_result(db)?;
+        Ok(count > 0)
     }
 }
 
@@ -886,6 +907,17 @@ impl Database {
         Ok(res_items)
     }
 
+    pub async fn get_single_post_resources(&self, post: u64) -> QueryResult<Vec<String>> {
+        use crate::schema::post_resources::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        post_resources
+            .filter(post_id.eq(post as i32))
+            .select(url)
+            .load(db)
+    }
+
     pub async fn total_project_resources_count(&self) -> anyhow::Result<u64> {
         use crate::schema::project_resources::dsl::*;
 
@@ -920,6 +952,17 @@ impl Database {
         Ok(res_items)
     }
 
+    pub async fn get_single_project_resources(&self, project: u64) -> QueryResult<Vec<String>> {
+        use crate::schema::project_resources::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        project_resources
+            .filter(project_id.eq(project as i32))
+            .select(url)
+            .load(db)
+    }
+
     pub async fn total_comment_resources_count(&self) -> anyhow::Result<u64> {
         use crate::schema::comment_resources::dsl::*;
 
@@ -946,6 +989,17 @@ impl Database {
             .limit(limit)
             .load(db)?;
         Ok(items)
+    }
+
+    pub async fn get_single_comment_resources(&self, comment: &str) -> QueryResult<Vec<String>> {
+        use crate::schema::comment_resources::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+        comment_resources
+            .filter(comment_id.eq(comment))
+            .select(url)
+            .load(db)
     }
 
     pub async fn get_res_content_type(&self, the_url: &Url) -> anyhow::Result<Option<String>> {
@@ -1089,7 +1143,15 @@ impl Database {
 
 /// Insertions
 impl Database {
-    pub async fn insert_project(&self, project: &ProjectFromCohost) -> anyhow::Result<()> {
+    pub async fn insert_project(
+        &self,
+        project: &ProjectFromCohost,
+        add_only: bool,
+    ) -> anyhow::Result<()> {
+        if add_only && self.has_project_id(project.project_id).await? {
+            return Ok(());
+        }
+
         trace!("insert_project {}", project.project_id);
 
         use crate::schema::project_resources::dsl::*;
@@ -1165,6 +1227,7 @@ impl Database {
         post: &PostFromCohost,
         is_share_post: bool,
         maybe_share_of_post: Option<&PostFromCohost>,
+        add_only: bool,
     ) -> anyhow::Result<()> {
         trace!(
             "insert_post {} (ST: {} / S: {:?})",
@@ -1176,7 +1239,7 @@ impl Database {
         for (i, share_post) in post.share_tree.iter().enumerate() {
             let prev_post = i.checked_sub(1).and_then(|i| post.share_tree.get(i));
 
-            self.insert_post(ctx, state, login, share_post, true, prev_post)
+            self.insert_post(ctx, state, login, share_post, true, prev_post, add_only)
                 .await
                 .with_context(|| {
                     format!(
@@ -1189,12 +1252,12 @@ impl Database {
                 })?;
         }
 
-        self.insert_project(&post.posting_project)
+        self.insert_project(&post.posting_project, add_only)
             .await
             .context("inserting posting project")?;
 
         for proj in &post.related_projects {
-            self.insert_project(&proj)
+            self.insert_project(&proj, add_only)
                 .await
                 .with_context(|| format!("inserting related project {}", proj.handle))?;
         }
@@ -1229,7 +1292,7 @@ impl Database {
                     match single_post {
                         Ok(single_post) => {
                             return self
-                                .insert_single_post(ctx, state, login, &single_post)
+                                .insert_single_post(ctx, state, login, &single_post, add_only)
                                 .await;
                         }
                         Err(err @ GetError::NotFound(..)) => {
@@ -1256,8 +1319,14 @@ impl Database {
             }
         }
 
-        self.insert_post_final(login, post, infer_share_post_from_tree, maybe_share_of_post)
-            .await
+        self.insert_post_final(
+            login,
+            post,
+            infer_share_post_from_tree,
+            maybe_share_of_post,
+            add_only,
+        )
+        .await
     }
 
     /// Inserts a post. Requires that all dependencies have already been inserted
@@ -1267,6 +1336,7 @@ impl Database {
         post: &PostFromCohost,
         infer_share_post_from_tree: bool,
         maybe_share_of_post: Option<&PostFromCohost>,
+        add_only: bool,
     ) -> anyhow::Result<()> {
         let shared_post_id = if infer_share_post_from_tree {
             let shared_post_id = post.share_tree.last().map(|post| post.post_id);
@@ -1289,6 +1359,14 @@ impl Database {
         } else {
             post.share_of_post_id
         };
+
+        if add_only
+            && self.has_post(post.post_id).await?
+            && (post.single_post_page_url == "https://cohost.org/"
+                || post.state != PostState::Published)
+        {
+            return Ok(());
+        }
 
         trace!(
             "insert_post_final {} (S: {:?}, i: {:?})",
@@ -1396,6 +1474,7 @@ impl Database {
         &self,
         on_post_id: u64,
         comment: &CommentFromCohost,
+        add_only: bool,
     ) -> anyhow::Result<()> {
         use crate::schema::comments::dsl::*;
 
@@ -1403,8 +1482,15 @@ impl Database {
         queue.push_back(comment);
 
         while let Some(comment) = queue.pop_front() {
+            if add_only
+                && self.has_comment(&comment.comment.comment_id).await?
+                && comment.poster.is_none()
+            {
+                continue;
+            }
+
             if let Some(project) = &comment.poster {
-                self.insert_project(project).await?;
+                self.insert_project(project, add_only).await?;
             }
 
             let mut db = self.db.lock().await;
@@ -1468,10 +1554,11 @@ impl Database {
         state: &Mutex<CurrentStateV1>,
         login: &LoginLoggedIn,
         single_post: &SinglePost,
+        add_only: bool,
     ) -> anyhow::Result<()> {
         trace!("insert_single_post {}", single_post.post.post_id);
 
-        self.insert_post(ctx, state, login, &single_post.post, false, None)
+        self.insert_post(ctx, state, login, &single_post.post, false, None, add_only)
             .await
             .with_context(|| {
                 format!(
@@ -1482,14 +1569,16 @@ impl Database {
 
         for (&post, comments) in &single_post.comments {
             for comment in comments {
-                self.insert_comment(post, comment).await.with_context(|| {
-                    format!(
-                        "inserting single post comment {}/{}/{}",
-                        single_post.post.posting_project.handle,
-                        single_post.post.filename,
-                        comment.comment.comment_id
-                    )
-                })?;
+                self.insert_comment(post, comment, add_only)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "inserting single post comment {}/{}/{}",
+                            single_post.post.posting_project.handle,
+                            single_post.post.filename,
+                            comment.comment.comment_id
+                        )
+                    })?;
             }
 
             let posting_project = self
@@ -1560,6 +1649,7 @@ impl Database {
         Ok(())
     }
 
+    /// Path must be stripped!
     pub async fn insert_url_file(&self, orig_url: &Url, path: &Path) -> anyhow::Result<()> {
         use crate::schema::url_files::dsl::*;
 

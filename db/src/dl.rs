@@ -107,7 +107,7 @@ async fn login(ctx: &CohostContext) -> anyhow::Result<LoginLoggedIn> {
     warn!("please do not change your currently active page ({current_handle}) in the cohost web UI while loading data");
 
     for project in edited_projects.projects {
-        ctx.insert_project(&project).await?;
+        ctx.insert_project(&project, false).await?;
     }
 
     Ok(logged_in)
@@ -123,7 +123,7 @@ async fn load_follows(
     info!("loaded follows: {}", followed.len());
 
     for f in followed {
-        ctx.insert_project(&f.project).await?;
+        ctx.insert_project(&f.project, false).await?;
         ctx.insert_follow(login.project_id, f.project.project_id)
             .await?;
     }
@@ -161,7 +161,7 @@ async fn load_likes(
         has_next = feed.pagination_mode.more_pages_forward;
 
         for post in &feed.posts {
-            ctx.insert_post(ctx, state, login, post, false, None)
+            ctx.insert_post(ctx, state, login, post, false, None, false)
                 .await?;
         }
     }
@@ -219,7 +219,7 @@ async fn load_profile_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(ctx, state, login, post, false, None)
+            ctx.insert_post(ctx, state, login, post, false, None, false)
                 .await?;
             count += 1;
         }
@@ -321,7 +321,7 @@ async fn load_tagged_posts(
                 post.post_id
             ));
 
-            ctx.insert_post(ctx, state, login, post, false, None)
+            ctx.insert_post(ctx, state, login, post, false, None, false)
                 .await?;
         }
 
@@ -353,7 +353,7 @@ async fn load_tagged_posts(
     Ok(())
 }
 
-fn long_progress_style() -> ProgressStyle {
+pub fn long_progress_style() -> ProgressStyle {
     ProgressStyle::with_template("{bar:40} {pos:>7}/{len:7} (eta: {eta}) {msg}")
         .unwrap()
         .progress_chars("▓▒░ ")
@@ -458,7 +458,7 @@ async fn load_comments_for_posts(
 
         match ctx.posts_single_post(&project_handle, post).await {
             Ok(post) => {
-                ctx.insert_single_post(ctx, state, login, &post).await?;
+                ctx.insert_single_post(ctx, state, login, &post, false).await?;
                 count += 1;
             }
             Err(GetError::NotFound(..)) => {
@@ -526,7 +526,7 @@ async fn fix_bad_transparent_shares(
 
             match ctx.posts_single_post(&share_post_handle, share).await {
                 Ok(post) => {
-                    ctx.insert_single_post(ctx, state, login, &post).await?;
+                    ctx.insert_single_post(ctx, state, login, &post, false).await?;
                     trace!("fixed with post {}", post.post.post_id);
                     was_maybe_fixed = true;
                     fixed += 1;
@@ -858,7 +858,10 @@ async fn migrate_resource_file_paths(
             let from_path = ctx.root_dir.join(&path);
             if !from_path.exists() {
                 if forget_missing {
-                    error!("resource file has gone missing. deleting entry for:\n{}", from_path.display());
+                    error!(
+                        "resource file has gone missing. deleting entry for:\n{}",
+                        from_path.display()
+                    );
                     ctx.remove_url_file(&url).await?;
                     offset -= 1;
                     continue;
@@ -889,7 +892,10 @@ to forget them from the database. Skipping for now!");
                 fs::rename(&from_path, &to_path)?;
 
                 if let Err(e) = remove_empty_dirs(&ctx.root_dir, &path) {
-                    warn!("could not clean up empty directories while migrating file from {}: {e}", from_path.display());
+                    warn!(
+                        "could not clean up empty directories while migrating file from {}: {e}",
+                        from_path.display()
+                    );
                 }
 
                 ctx.insert_url_file(&url, intended_path).await?;
@@ -923,16 +929,39 @@ fn remove_empty_dirs(base: &Path, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn download(config: Config, db: SqliteConnection) {
+fn make_context(config: &Config, db: SqliteConnection) -> (CohostContext, CurrentStateV1) {
     let mut ctx = CohostContext::new(
-        config.cookie,
+        config.cookie.clone(),
         Duration::from_secs(config.request_timeout_secs.unwrap_or(120)),
         PathBuf::from(&config.root_dir),
         db,
     );
-    ctx.do_not_fetch_domains = config.do_not_fetch_domains.into_iter().collect();
+    ctx.do_not_fetch_domains = config.do_not_fetch_domains.iter().cloned().collect();
 
-    let mut state = ok_or_quit(CurrentStateV1::load_state().context("loading state"));
+    let state = ok_or_quit(CurrentStateV1::load_state().context("loading state"));
+
+    (ctx, state)
+}
+
+fn save_state_continuously(state: Arc<Mutex<CurrentStateV1>>) {
+    tokio::spawn(async move {
+        loop {
+            {
+                trace!("writing state");
+                let state = state.lock().await;
+                if let Err(e) = state.store_state() {
+                    error!("could not save downloader state: {e}");
+                    info!("here it is just for you:\n{state:?}");
+                }
+            }
+
+            sleep(Duration::from_secs(1)).await;
+        }
+    });
+}
+
+pub async fn download(config: Config, db: SqliteConnection) {
+    let (ctx, mut state) = make_context(&config, db);
 
     let login = ok_or_quit(login(&ctx).await.context("logging in"));
 
@@ -947,21 +976,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
 
     let state = Arc::new(Mutex::new(state));
 
-    let state2 = Arc::clone(&state);
-    tokio::spawn(async move {
-        loop {
-            {
-                trace!("writing state");
-                let state = state2.lock().await;
-                if let Err(e) = state.store_state() {
-                    error!("could not save downloader state: {e}");
-                    info!("here it is just for you:\n{state:?}");
-                }
-            }
-
-            sleep(Duration::from_secs(1)).await;
-        }
-    });
+    save_state_continuously(Arc::clone(&state));
 
     if !state.lock().await.has_likes.contains(&login.project_id) && config.load_likes {
         ok_or_quit(
@@ -978,7 +993,7 @@ pub async fn download(config: Config, db: SqliteConnection) {
                     .await
                     .with_context(|| format!("loading data for @{handle}")),
             );
-            ok_or_quit(ctx.insert_project(&project).await);
+            ok_or_quit(ctx.insert_project(&project, false).await);
             project.project_id
         } else {
             ok_or_quit(ctx.project_for_handle(handle).await).id as u64
@@ -1061,6 +1076,40 @@ pub async fn download(config: Config, db: SqliteConnection) {
 
     ok_or_quit(migrate_resource_file_paths(&ctx, config.forget_missing_url_files).await);
 
+    ok_or_quit(load_cohost_resources(&ctx, &state).await);
+
+    if config.load_post_resources {
+        ok_or_quit(load_post_resources(&ctx, &state).await);
+    }
+    if config.load_project_resources {
+        ok_or_quit(load_project_resources(&ctx, &state).await);
+    }
+    if config.load_comment_resources {
+        ok_or_quit(load_comment_resources(&ctx, &state).await);
+    }
+
+    ok_or_quit(state.lock().await.store_state());
+
+    info!("Done");
+}
+
+pub async fn import_cdl1(
+    config: Config,
+    db: SqliteConnection,
+    import_config: crate::import_cdl1::CohostDl1ImportConfig,
+) {
+    let (ctx, state) = make_context(&config, db);
+
+    let state = Arc::new(Mutex::new(state));
+
+    save_state_continuously(Arc::clone(&state));
+
+    ok_or_quit(crate::import_cdl1::import_cdl1(&ctx, &state, import_config).await);
+    ok_or_quit(state.lock().await.store_state());
+
+    info!("Now downloading any missing resources");
+
+    // load any missing resources if needed
     ok_or_quit(load_cohost_resources(&ctx, &state).await);
 
     if config.load_post_resources {

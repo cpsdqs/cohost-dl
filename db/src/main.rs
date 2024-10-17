@@ -4,6 +4,7 @@ extern crate log;
 use crate::bundled_files::TEMPLATE_CONFIG;
 use crate::context::CohostContext;
 use crate::data::Database;
+use crate::import_cdl1::CohostDl1ImportConfig;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use diesel::connection::SimpleConnection;
@@ -25,6 +26,7 @@ mod context;
 mod data;
 mod dl;
 mod feed;
+mod import_cdl1;
 mod login;
 mod post;
 mod project;
@@ -44,9 +46,14 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Downloads data as specified in config.toml
     Download,
+    /// Starts a local web server to view downloaded data
     Serve,
+    /// Generates a new config.toml in the current directory
     GenerateConfig,
+    /// Imports cohost-dl 1 data (interactive)
+    ImportCohostDl1,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,6 +118,12 @@ async fn main() {
                     process::exit(1);
                 }
                 fs::write(path, TEMPLATE_CONFIG).unwrap();
+            }
+            Commands::ImportCohostDl1 => {
+                if let Err(e) = interactive_import_cdl1_data(config, db).await {
+                    eprintln!("{e:?}");
+                    process::exit(1);
+                }
             }
         }
     } else {
@@ -597,6 +610,8 @@ async fn interactive_has_config() -> anyhow::Result<()> {
     println!("The wizard is offering you following services:");
     println!("(1) downloading data according to configuration");
     println!("(2) looking at downloaded data in your web browser");
+    println!("---");
+    println!("(3) importing data from cohost-dl 1");
     println!();
     println!("You can also type 'exit' to leave.");
 
@@ -604,6 +619,7 @@ async fn interactive_has_config() -> anyhow::Result<()> {
         let choice = rl_parse("> ", |i| match i {
             "1" => Some(1),
             "2" => Some(2),
+            "3" => Some(3),
             "exit" | "quit" | "leave" | "bye" => {
                 println!("Goodbye!");
                 process::exit(0)
@@ -614,41 +630,51 @@ async fn interactive_has_config() -> anyhow::Result<()> {
             }
         })?;
 
-        let is_dl = choice == 1;
-
-        match init() {
-            Ok((config, db)) => {
-                if is_dl {
-                    println!("The wizard hands off to the downloader and leaves.");
-                    println!();
-                    config.print_dl_info();
-
-                    sleep(Duration::from_millis(500)).await;
-
-                    dl::download(config, db).await;
-
-                    let serve = interactive_yn("Open results in your browser?")?;
-                    if serve {
-                        let (config, db) = init()?;
-                        println!();
-                        println!("You can press Ctrl + C to quit.");
-                        serve_and_open(config, db).await;
-                    }
-                    break Ok(());
-                } else {
-                    println!("The wizard hands off to your web browser and leaves.");
-                    println!();
-                    println!("You can press Ctrl + C to quit.");
-
-                    serve_and_open(config, db).await;
-                    break Ok(());
-                }
-            }
+        let (config, db) = match init() {
+            Ok(res) => res,
             Err(e) => {
                 error!("{e:?}");
                 println!("It appears an error occurred.");
                 println!("Maybe your configuration file is invalid?");
+                continue;
             }
+        };
+
+        match choice {
+            1 => {
+                println!("The wizard hands off to the downloader and leaves.");
+                println!();
+                config.print_dl_info();
+
+                sleep(Duration::from_millis(500)).await;
+
+                dl::download(config, db).await;
+
+                let serve = interactive_yn("Open results in your browser?")?;
+                if serve {
+                    let (config, db) = init()?;
+                    println!();
+                    println!("You can press Ctrl + C to quit.");
+                    serve_and_open(config, db).await;
+                }
+                break Ok(());
+            }
+            2 => {
+                println!("The wizard hands off to your web browser and leaves.");
+                println!();
+                println!("You can press Ctrl + C to quit.");
+
+                serve_and_open(config, db).await;
+                break Ok(());
+            }
+            3 => {
+                println!("The wizard will now import your cohost-dl 1 data.");
+                println!();
+
+                interactive_import_cdl1_data(config, db).await?;
+                break Ok(());
+            }
+            _ => (),
         }
     }
 }
@@ -662,4 +688,94 @@ async fn serve_and_open(config: Config, db: SqliteConnection) {
         }
     })
     .await;
+}
+
+async fn interactive_import_cdl1_data(config: Config, db: SqliteConnection) -> anyhow::Result<()> {
+    println!("Where is your cohost-dl 1 data?");
+    let from_dir = rl_parse("path to the `out` directory: ", |i| {
+        if i.is_empty() {
+            return None;
+        }
+        let path = PathBuf::from(i);
+        let Ok(path) = path.canonicalize() else {
+            println!("That file path doesn’t exist");
+            return None;
+        };
+        if !path.is_dir() {
+            println!("That’s not a directory");
+            return None;
+        }
+        let rc_dir = path.join("rc");
+        if !rc_dir.is_dir() {
+            println!("That doesn’t appear to be a cohost-dl 1 `out` directory.");
+            return None;
+        }
+        Some(path)
+    })?;
+    println!("-> {}", from_dir.display());
+
+    println!();
+    println!(
+        "What do you want to happen if data for a particular post already exists in the database?"
+    );
+    println!("(1) overwrite existing data");
+    println!("(2) add new data only");
+
+    let add_only = rl_parse("> ", |i| match i {
+        "1" => Some(false),
+        "2" => Some(true),
+        _ => {
+            println!("Enter 1 or 2");
+            None
+        }
+    })?;
+
+    println!();
+    if add_only {
+        println!("When adding a post that didn’t already exist, do you want to try reloading it from cohost.org?");
+    } else {
+        println!("When adding a post, do you want to try reloading it from cohost.org?");
+    }
+    println!("(This will, of course, take more time)");
+
+    let reload = interactive_yn("reload?")?;
+
+    println!();
+    println!("Configuration:");
+    println!("- from: {}", from_dir.display());
+    if add_only {
+        println!("- add new posts only");
+    } else {
+        println!("- overwrite posts that already exist");
+    }
+    if reload {
+        println!("- when adding a post, try to reload it from cohost.org");
+    } else {
+        println!("- do not reload from cohost.org");
+        println!("  (note: some data will still be downloaded to fill some missing info)");
+    }
+
+    println!();
+    println!("OK to start?");
+    let ok = rl_parse("[yes/exit] ", |i| match i {
+        "y" | "ye" | "yes" => Some(true),
+        "exit" => Some(false),
+        _ => {
+            println!("Enter 'yes' or 'exit'");
+            None
+        }
+    })?;
+
+    if !ok {
+        return Ok(());
+    }
+
+    let import_config = CohostDl1ImportConfig {
+        path: from_dir,
+        add_only,
+        reload,
+    };
+
+    dl::import_cdl1(config, db, import_config).await;
+    Ok(())
 }

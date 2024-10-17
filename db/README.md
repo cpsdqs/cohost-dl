@@ -28,7 +28,8 @@ Files:
 ## Compiling and running from source
 1. compile the post & markdown renderer. this is super jank. it currently requires running cohost-dl 1 as well
     - if ASSC ever ships an open source post renderer, this will be replaced with that (if possible)
-    - if you don’t care about serve mode, just make an empty `md-render/compiled.js` file so the Rust code compiles
+    - if you don’t care about serve mode, just make an empty `md-render/dist/server-render.js` and `md-render/dist/client.js`
+      file so the Rust code compiles
     - in repo root:
     - `rm out/staff/post/7611443-cohost-to-shut-down` (if it exists)
         - why? because this post is used to determine the current Cohost version

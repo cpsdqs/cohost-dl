@@ -473,9 +473,7 @@ impl CohostContext {
         }
     }
 
-    /// Returns the file path where the resource is supposed to be stored at.
-    ///
-    /// This exists because an older version stored them at the wrong path.
+    /// Returns the (canonical) file path where the resource is supposed to be stored at.
     pub async fn get_intended_resource_file_path(
         &self,
         url: &Url,
@@ -623,7 +621,7 @@ impl CohostContext {
     }
 }
 
-const KNOWN_FILE_EXTENSIONS: &[(&str, &[&str])] = &[
+pub const KNOWN_FILE_EXTENSIONS: &[(&str, &[&str])] = &[
     // image formats
     ("apng", &["image/apng"]),
     ("avif", &["image/avif"]),
@@ -678,7 +676,7 @@ fn does_resource_probably_need_a_file_extension(path: &Path) -> bool {
     }
 }
 
-fn resource_file_extension_for_content_type(content_type: &str) -> Option<&'static str> {
+pub fn resource_file_extension_for_content_type(content_type: &str) -> Option<&'static str> {
     let base_content_type = content_type.split(';').next()?;
 
     for (e, c) in KNOWN_FILE_EXTENSIONS {
