@@ -94,8 +94,14 @@ where
 async fn login(ctx: &CohostContext) -> anyhow::Result<LoginLoggedIn> {
     info!("logging in");
     let logged_in = ctx.login_logged_in().await?;
-    let edited_projects = ctx.projects_list_edited_projects().await?;
 
+    if !logged_in.logged_in {
+        error!("not logged in. please log in again (restart and use the login option, or replace the cookie manually)");
+        sleep(Duration::from_secs(5)).await;
+        bail!("not logged in");
+    }
+
+    let edited_projects = ctx.projects_list_edited_projects().await?;
     let current_handle = edited_projects
         .projects
         .iter()
@@ -103,7 +109,7 @@ async fn login(ctx: &CohostContext) -> anyhow::Result<LoginLoggedIn> {
         .map(|p| format!("@{}", p.handle))
         .unwrap_or("(error)".into());
 
-    info!("logged in as {} / {}", logged_in.email, current_handle);
+    info!("logged in as {} / {}", logged_in.email.as_deref().unwrap_or_default(), current_handle);
     warn!("please do not change your currently active page ({current_handle}) in the cohost web UI while loading data");
 
     for project in edited_projects.projects {
@@ -357,6 +363,94 @@ pub fn long_progress_style() -> ProgressStyle {
     ProgressStyle::with_template("{bar:40} {pos:>7}/{len:7} (eta: {eta}) {msg}")
         .unwrap()
         .progress_chars("▓▒░ ")
+}
+
+async fn load_specific_posts(
+    ctx: &CohostContext,
+    state: &Mutex<CurrentStateV1>,
+    login: &LoginLoggedIn,
+    posts: &[String],
+) -> anyhow::Result<()> {
+    let progress = ProgressBar::new(posts.len() as u64);
+    progress.set_style(long_progress_style());
+
+    progress.set_message("loading specific posts");
+
+    let mut loaded = 0;
+
+    for post_url in posts {
+        progress.inc(1);
+
+        let url = match Url::parse(post_url) {
+            Ok(url) => url,
+            Err(e) => {
+                error!("could not load post at {post_url}: invalid URL: {e}");
+                continue;
+            }
+        };
+
+        if url.scheme() != "http" && url.scheme() != "https" {
+            error!("could not load post at {url}: not https://");
+            continue;
+        }
+        if url.domain() != Some("cohost.org") {
+            error!("could not load post at {url}: not cohost.org");
+            continue;
+        }
+        let mut segments = url.path_segments().unwrap();
+        let Some(handle) = segments.next() else {
+            error!("could not load post at {url}: no project handle");
+            continue;
+        };
+        if segments.next() != Some("post") {
+            error!("could not load post at {url}: {handle} should be followed by /post/");
+            continue;
+        }
+        let Some(filename) = segments.next() else {
+            error!("could not load post at {url}: /post/ should be followed by post ID");
+            continue;
+        };
+        let Some(post_id) = filename.split('-').next().and_then(|i| i.parse().ok()) else {
+            error!("could not load post at {url}: /post/ should be followed by post ID");
+            continue;
+        };
+
+        if ctx.has_project_handle(handle).await? {
+            let project_id = ctx.project_id_for_handle(handle).await?;
+            if state
+                .lock()
+                .await
+                .projects
+                .get(&project_id)
+                .map_or(false, |p| p.has_comments.contains(&post_id))
+            {
+                continue;
+            }
+        }
+
+        progress.set_message(url.to_string());
+
+        match ctx.posts_single_post(handle, post_id).await {
+            Ok(post) => {
+                ctx.insert_single_post(ctx, state, login, &post, false)
+                    .await?;
+                loaded += 1;
+            }
+            Err(e) => {
+                error!("could not load post at {url}: {e:?}");
+            }
+        }
+    }
+
+    progress.finish_and_clear();
+
+    if loaded == 1 {
+        info!("Loaded 1 post from URL");
+    } else if loaded > 1 {
+        info!("Loaded {loaded} posts from URLs");
+    }
+
+    Ok(())
 }
 
 async fn posts_without_comments(
@@ -1059,6 +1153,8 @@ pub async fn download(config: Config, db: SqliteConnection) {
             ok_or_quit(ctx.db.vacuum().await);
         }
     }
+
+    ok_or_quit(load_specific_posts(&ctx, &state, &login, &config.load_specific_posts).await);
 
     if config.load_comments {
         let posts = {

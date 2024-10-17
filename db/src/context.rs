@@ -230,7 +230,7 @@ impl CohostContext {
                 let mut slice_end = slice_center;
 
                 for i in 0..4 {
-                    let maybe_start = slice_center - 300 + i;
+                    let maybe_start = slice_center.saturating_sub(300) + i;
                     if text.is_char_boundary(maybe_start) {
                         slice_start = maybe_start;
                         break;

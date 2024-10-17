@@ -12,15 +12,24 @@ use std::collections::HashMap;
 pub struct LoginLoggedIn {
     pub activated: bool,
     pub delete_after: Option<String>,
-    pub email: String,
-    pub email_verified: bool,
-    pub email_verify_canceled: bool,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+    pub email_verify_canceled: Option<bool>,
     pub logged_in: bool,
     pub mod_mode: bool,
+    #[serde(deserialize_with = "deser_project_id")]
     pub project_id: u64,
     pub read_only: bool,
     pub two_factor_active: bool,
-    pub user_id: u64,
+    pub user_id: Option<u64>,
+}
+
+fn deser_project_id<'de, D>(de: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let project_id = Option::<u64>::deserialize(de)?;
+    Ok(project_id.unwrap_or_default())
 }
 
 #[derive(Debug, Serialize)]

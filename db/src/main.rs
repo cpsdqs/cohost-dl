@@ -52,6 +52,8 @@ enum Commands {
     Serve,
     /// Generates a new config.toml in the current directory
     GenerateConfig,
+    /// Updates an existing config.toml with a new session cookie (interactive)
+    Login,
     /// Imports cohost-dl 1 data (interactive)
     ImportCohostDl1,
 }
@@ -72,6 +74,8 @@ pub struct Config {
     pub load_profile_posts: Vec<String>,
     #[serde(default)]
     pub load_tagged_posts: Vec<String>,
+    #[serde(default)]
+    pub load_specific_posts: Vec<String>,
     #[serde(default)]
     pub skip_follows: Vec<String>,
     #[serde(default)]
@@ -118,6 +122,12 @@ async fn main() {
                     process::exit(1);
                 }
                 fs::write(path, TEMPLATE_CONFIG).unwrap();
+            }
+            Commands::Login => {
+                if let Err(e) = interactive_login_with_existing_config().await {
+                    eprintln!("{e:?}");
+                    process::exit(1);
+                }
             }
             Commands::ImportCohostDl1 => {
                 if let Err(e) = interactive_import_cdl1_data(config, db).await {
@@ -517,6 +527,26 @@ async fn interactive_setup() -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn interactive_login_with_existing_config() -> anyhow::Result<()> {
+    let config = fs::read_to_string("config.toml")?;
+
+    let mut config = toml_edit::DocumentMut::from_str(&config)?;
+
+    let Some(cookie) = interactive_login().await? else {
+        println!("Leaving configuration as-is. Bye!");
+        sleep(Duration::from_secs(2)).await;
+        return Ok(());
+    };
+
+    config["cookie"] = toml_edit::value(cookie);
+
+    fs::write("config.toml", config.to_string())?;
+
+    println!("Success! You can now restart the program again to do whatever.");
+    sleep(Duration::from_secs(5)).await;
+    Ok(())
+}
+
 async fn interactive_login() -> anyhow::Result<Option<String>> {
     let (cookie, needs_otp) = loop {
         println!("Enter your Cohost login email address, or type 'exit' to go back.");
@@ -611,7 +641,8 @@ async fn interactive_has_config() -> anyhow::Result<()> {
     println!("(1) downloading data according to configuration");
     println!("(2) looking at downloaded data in your web browser");
     println!("---");
-    println!("(3) importing data from cohost-dl 1");
+    println!("(3) log in to cohost again");
+    println!("(4) importing data from cohost-dl 1");
     println!();
     println!("You can also type 'exit' to leave.");
 
@@ -620,6 +651,7 @@ async fn interactive_has_config() -> anyhow::Result<()> {
             "1" => Some(1),
             "2" => Some(2),
             "3" => Some(3),
+            "4" => Some(4),
             "exit" | "quit" | "leave" | "bye" => {
                 println!("Goodbye!");
                 process::exit(0)
@@ -668,6 +700,14 @@ async fn interactive_has_config() -> anyhow::Result<()> {
                 break Ok(());
             }
             3 => {
+                drop(config);
+                drop(db);
+                if let Err(e) = interactive_login_with_existing_config().await {
+                    eprintln!("{e:?}");
+                }
+                break Ok(());
+            }
+            4 => {
                 println!("The wizard will now import your cohost-dl 1 data.");
                 println!();
 
