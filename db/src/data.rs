@@ -1319,14 +1319,8 @@ impl Database {
             }
         }
 
-        self.insert_post_final(
-            login,
-            post,
-            infer_share_post_from_tree,
-            maybe_share_of_post,
-            add_only,
-        )
-        .await
+        self.insert_post_final(login, post, infer_share_post_from_tree, maybe_share_of_post)
+            .await
     }
 
     /// Inserts a post. Requires that all dependencies have already been inserted
@@ -1336,7 +1330,6 @@ impl Database {
         post: &PostFromCohost,
         infer_share_post_from_tree: bool,
         maybe_share_of_post: Option<&PostFromCohost>,
-        add_only: bool,
     ) -> anyhow::Result<()> {
         let shared_post_id = if infer_share_post_from_tree {
             let shared_post_id = post.share_tree.last().map(|post| post.post_id);
@@ -1360,8 +1353,7 @@ impl Database {
             post.share_of_post_id
         };
 
-        if add_only
-            && self.has_post(post.post_id).await?
+        if self.has_post(post.post_id).await?
             && (post.single_post_page_url == "https://cohost.org/"
                 || post.state != PostState::Published)
         {

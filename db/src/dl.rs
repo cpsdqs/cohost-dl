@@ -458,7 +458,8 @@ async fn load_comments_for_posts(
 
         match ctx.posts_single_post(&project_handle, post).await {
             Ok(post) => {
-                ctx.insert_single_post(ctx, state, login, &post, false).await?;
+                ctx.insert_single_post(ctx, state, login, &post, false)
+                    .await?;
                 count += 1;
             }
             Err(GetError::NotFound(..)) => {
@@ -526,7 +527,8 @@ async fn fix_bad_transparent_shares(
 
             match ctx.posts_single_post(&share_post_handle, share).await {
                 Ok(post) => {
-                    ctx.insert_single_post(ctx, state, login, &post, false).await?;
+                    ctx.insert_single_post(ctx, state, login, &post, false)
+                        .await?;
                     trace!("fixed with post {}", post.post.post_id);
                     was_maybe_fixed = true;
                     fixed += 1;
