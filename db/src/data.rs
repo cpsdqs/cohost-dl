@@ -2,7 +2,7 @@ use crate::comment::CommentFromCohost;
 use crate::context::{CohostContext, GetError};
 use crate::dl::CurrentStateV1;
 use crate::feed::TagRelationship;
-use crate::post::{PostBlock, PostFromCohost, PostState};
+use crate::post::{LimitedVisibilityReason, PostBlock, PostFromCohost, PostState};
 use crate::project::{
     AvatarShape, LoggedOutPostVisibility, ProjectAskSettings, ProjectContactCard, ProjectFlag,
     ProjectFromCohost, ProjectPrivacy,
@@ -415,6 +415,32 @@ impl Database {
         Ok(count > 0)
     }
 
+    pub async fn is_db_post_better_somehow(&self, post: &DbPost) -> anyhow::Result<bool> {
+        use crate::schema::posts::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let existing: Option<DbPost> = posts.filter(id.eq(post.id)).first(db).optional()?;
+
+        let Some(existing) = existing else {
+            return Ok(false);
+        };
+        let existing_data = existing.data()?;
+
+        let new_data = post.data()?;
+
+        if existing_data.blocks.is_empty() && !new_data.blocks.is_empty() {
+            // our post got truncated, or something
+            return Ok(true);
+        }
+
+        if existing.state != 1 && post.state == 1 {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
     pub async fn is_liked(&self, project_id: u64, post_id: u64) -> QueryResult<bool> {
         use crate::schema::likes::dsl::*;
         let mut db = self.db.lock().await;
@@ -437,6 +463,16 @@ impl Database {
         Ok(posts.filter(id.eq(post_id as i32)).first(db)?)
     }
 
+    pub async fn total_post_count(&self) -> anyhow::Result<u64> {
+        use crate::schema::posts::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i64 = posts.count().get_result(db)?;
+        Ok(result as u64)
+    }
+
     pub async fn total_non_transparent_post_count(&self) -> anyhow::Result<u64> {
         use crate::schema::posts::dsl::*;
 
@@ -448,6 +484,24 @@ impl Database {
             .count()
             .get_result(db)?;
         Ok(result as u64)
+    }
+
+    pub async fn get_post_ids(&self, offset: i64, limit: i64) -> QueryResult<Vec<u64>> {
+        use crate::schema::posts::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let items = posts
+            .select(id)
+            .offset(offset)
+            .limit(limit)
+            .load_iter::<i32, _>(db)?;
+
+        let mut res_items = Vec::new();
+        for item in items {
+            res_items.push(item? as u64);
+        }
+        Ok(res_items)
     }
 
     /// Returns (project, post) tuples
@@ -1355,7 +1409,8 @@ impl Database {
 
         if self.has_post(post.post_id).await?
             && (post.single_post_page_url == "https://cohost.org/"
-                || post.state != PostState::Published)
+                || post.state != PostState::Published
+                || post.limited_visibility_reason != LimitedVisibilityReason::None)
         {
             return Ok(());
         }

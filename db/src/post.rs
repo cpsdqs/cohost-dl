@@ -175,7 +175,7 @@ impl<'de> Deserialize<'de> for PostState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LimitedVisibilityReason {
     None,

@@ -6,7 +6,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(unused)]
 pub struct LoginLoggedIn {

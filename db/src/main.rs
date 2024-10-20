@@ -28,6 +28,7 @@ mod dl;
 mod feed;
 mod import_cdl1;
 mod login;
+mod merge;
 mod post;
 mod project;
 mod render;
@@ -56,6 +57,11 @@ enum Commands {
     Login,
     /// Imports cohost-dl 1 data (interactive)
     ImportCohostDl1,
+    /// Imports data from another cohost-dl 2 download
+    ExperimentalMergeData {
+        /// Other database file
+        database: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,6 +137,12 @@ async fn main() {
             }
             Commands::ImportCohostDl1 => {
                 if let Err(e) = interactive_import_cdl1_data(config, db).await {
+                    eprintln!("{e:?}");
+                    process::exit(1);
+                }
+            }
+            Commands::ExperimentalMergeData { database: other_db } => {
+                if let Err(e) = merge::merge(&Database::new(db), &other_db).await {
                     eprintln!("{e:?}");
                     process::exit(1);
                 }
