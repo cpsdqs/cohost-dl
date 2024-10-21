@@ -190,6 +190,8 @@ pub async fn import_cdl1(
 struct SinglePostView {
     post_id: u64,
     project: ProjectFromCohost,
+    #[serde(default)]
+    nonce: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -364,6 +366,7 @@ async fn import_post_page(
                 .posts_single_post(
                     &spv_data.single_post_view.project.handle,
                     spv_data.single_post_view.post_id,
+                    spv_data.single_post_view.nonce,
                 )
                 .await
                 .context("reloading post from cohost.org (adding existing data succeeded!)")?;

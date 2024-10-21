@@ -556,6 +556,18 @@ impl Database {
         Ok(items > 0)
     }
 
+    pub async fn nonce_for_post(&self, id: u64) -> QueryResult<Option<String>> {
+        use crate::schema::draft_nonces::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        Ok(draft_nonces
+            .filter(post_id.eq(id as i32))
+            .select(nonce)
+            .first(db)
+            .optional()?)
+    }
+
     pub async fn all_shares_of_post(&self, post_id: u64) -> QueryResult<Vec<u64>> {
         use crate::schema::posts::dsl::*;
 
@@ -1340,7 +1352,7 @@ impl Database {
                     );
 
                     let single_post = ctx
-                        .posts_single_post(&post.posting_project.handle, post.post_id)
+                        .posts_single_post(&post.posting_project.handle, post.post_id, None)
                         .await;
 
                     match single_post {
@@ -1591,6 +1603,22 @@ impl Database {
                 queue.push_back(child);
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn insert_draft_nonce(&self, post: u64, the_nonce: String) -> QueryResult<()> {
+        use crate::schema::draft_nonces::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        diesel::insert_into(draft_nonces)
+            .values((post_id.eq(post as i32), nonce.eq(&the_nonce)))
+            .on_conflict(post_id)
+            .do_update()
+            .set(nonce.eq(&the_nonce))
+            .execute(db)?;
 
         Ok(())
     }

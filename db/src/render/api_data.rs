@@ -68,6 +68,7 @@ pub async fn cohost_api_post(
 ) -> Result<PostFromCohost, GetDataError> {
     // while this could be made more efficient,
     let post = db.post(post_id).await?;
+    let draft_nonce = db.nonce_for_post(post_id).await?;
 
     let mut share_tree = Vec::new();
     // this adds extra transparent shares, but whatever
@@ -136,7 +137,10 @@ pub async fn cohost_api_post(
         share_tree,
         shares_locked: post_data.shares_locked,
         single_post_page_url: post_data.single_post_page_url,
-        state: PostState::Published,
+        state: match draft_nonce {
+            Some(_) => PostState::Draft,
+            _ => PostState::Published,
+        },
         tags,
         transparent_share_of_post_id,
     })

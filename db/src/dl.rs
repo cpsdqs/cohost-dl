@@ -109,7 +109,11 @@ async fn login(ctx: &CohostContext) -> anyhow::Result<LoginLoggedIn> {
         .map(|p| format!("@{}", p.handle))
         .unwrap_or("(error)".into());
 
-    info!("logged in as {} / {}", logged_in.email.as_deref().unwrap_or_default(), current_handle);
+    info!(
+        "logged in as {} / {}",
+        logged_in.email.as_deref().unwrap_or_default(),
+        current_handle
+    );
     warn!("please do not change your currently active page ({current_handle}) in the cohost web UI while loading data");
 
     for project in edited_projects.projects {
@@ -415,6 +419,8 @@ async fn load_specific_posts(
             continue;
         };
 
+        let nonce = segments.next();
+
         if ctx.has_project_handle(handle).await? {
             let project_id = ctx.project_id_for_handle(handle).await?;
             if state
@@ -430,10 +436,18 @@ async fn load_specific_posts(
 
         progress.set_message(url.to_string());
 
-        match ctx.posts_single_post(handle, post_id).await {
+        match ctx
+            .posts_single_post(handle, post_id, nonce.map(|s| s.to_string()))
+            .await
+        {
             Ok(post) => {
                 ctx.insert_single_post(ctx, state, login, &post, false)
                     .await?;
+
+                if let Some(nonce) = nonce {
+                    ctx.insert_draft_nonce(post_id, nonce.to_string()).await?;
+                }
+
                 loaded += 1;
             }
             Err(e) => {
@@ -550,7 +564,8 @@ async fn load_comments_for_posts(
             ));
         }
 
-        match ctx.posts_single_post(&project_handle, post).await {
+        let nonce = ctx.nonce_for_post(post).await?;
+        match ctx.posts_single_post(&project_handle, post, nonce).await {
             Ok(post) => {
                 ctx.insert_single_post(ctx, state, login, &post, false)
                     .await?;
@@ -619,7 +634,11 @@ async fn fix_bad_transparent_shares(
 
             let (_, share_post_handle) = ctx.posting_project_handle(share).await?;
 
-            match ctx.posts_single_post(&share_post_handle, share).await {
+            let nonce = ctx.nonce_for_post(share).await?;
+            match ctx
+                .posts_single_post(&share_post_handle, share, nonce)
+                .await
+            {
                 Ok(post) => {
                     ctx.insert_single_post(ctx, state, login, &post, false)
                         .await?;

@@ -27,6 +27,7 @@
         @{{ post.postingProject.handle }}
     </a>
 
+    {% if post.publishedAt %}
     <time
         class="i-timestamp local-timestamp"
         datetime="{{ post.publishedAt }}"
@@ -36,6 +37,7 @@
             {{ post.publishedAt | date(format = date_fmt_text) }}
         </a>
     </time>
+    {% endif %}
 
     {% set shared_from = post.shareTree | last %}
     {% if show_shared_from and shared_from %}
@@ -135,6 +137,14 @@
     </div>
 </div>
 {%- else -%}
+
+{% if post.state == 0 %}
+<div class="co-draft-info-box-container">
+    <div class="co-info-box is-draft i-info-circle-icon">
+        This post was a draft. It was not publicly visible, but you could send people links to it.
+    </div>
+</div>
+{% endif %}
 
 {%- set collapsed = false -%}
 {%- if post.cws | length -%}

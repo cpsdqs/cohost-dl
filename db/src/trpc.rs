@@ -80,6 +80,8 @@ pub struct ProfilePostsPagination {
 struct SinglePostInput {
     handle: String,
     post_id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    nonce: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,10 +145,12 @@ impl CohostContext {
         &self,
         project_handle: &str,
         post_id: u64,
+        nonce: Option<String>,
     ) -> Result<SinglePost, GetError> {
         let input = SinglePostInput {
             handle: project_handle.into(),
             post_id,
+            nonce,
         };
 
         self.trpc_query("posts.singlePost", Some(input)).await

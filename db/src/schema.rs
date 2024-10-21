@@ -27,6 +27,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    draft_nonces (post_id) {
+        post_id -> Integer,
+        nonce -> Text,
+    }
+}
+
+diesel::table! {
     follows (from_project_id, to_project_id) {
         from_project_id -> Integer,
         to_project_id -> Integer,
@@ -122,6 +129,7 @@ diesel::table! {
 diesel::joinable!(comment_resources -> comments (comment_id));
 diesel::joinable!(comments -> posts (post_id));
 diesel::joinable!(comments -> projects (posting_project_id));
+diesel::joinable!(draft_nonces -> posts (post_id));
 diesel::joinable!(likes -> posts (to_post_id));
 diesel::joinable!(likes -> projects (from_project_id));
 diesel::joinable!(post_related_projects -> posts (post_id));
@@ -135,6 +143,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     comment_resources,
     comments,
     data_migration_state,
+    draft_nonces,
     follows,
     likes,
     post_related_projects,

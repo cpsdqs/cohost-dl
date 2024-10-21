@@ -1835,6 +1835,10 @@ body {
     border-top: 1px solid rgb(191 186 181);
 }
 
+.co-draft-info-box-container {
+    margin: 0.75rem;
+}
+
 .co-info-box {
     display: flex;
     align-items: center;
@@ -1858,6 +1862,16 @@ body {
     &.is-tombstone {
         background: rgb(222 217 211);
         color: rgb(var(--color-notBlack));
+    }
+
+    &.is-draft {
+        background: rgb(var(--color-foreground-200));
+        color: rgb(var(--color-notBlack));
+        border-color: rgb(222 217 211);
+
+        &::before {
+            color: rgb(var(--color-cherry));
+        }
     }
 
     &::before {
@@ -1901,6 +1915,16 @@ body {
             background: rgb(var(--color-notBlack));
             color: rgb(222 217 211);
             border-color: currentColor;
+        }
+
+        &.is-draft {
+            background: rgb(103 49 4);
+            color: rgb(var(--color-notWhite));
+            border-color: currentColor;
+
+            &::before {
+                color: rgb(var(--color-mango));
+            }
         }
     }
 }
