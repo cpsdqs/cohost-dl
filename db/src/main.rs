@@ -101,8 +101,23 @@ pub struct Config {
     pub server_port: u16,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // MS Windows apparently has quite a small default stack size, so we can't use the main thread.
+    // I am not figuring out MSVC linker arguments for this
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .name("cohost_dl::main".into())
+        .spawn(|| {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_stack_size(8 * 1024 * 1024)
+                .build()
+                .unwrap();
+            rt.block_on(main_impl());
+        }).unwrap().join().unwrap();
+}
+
+async fn main_impl() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "info");
     }
