@@ -1,4 +1,5 @@
 use crate::bundled_files::COHOST_STATIC;
+use crate::comment::Permission;
 use crate::context::{CohostContext, GetError, MAX_RETRIES};
 use crate::trpc::LoginLoggedIn;
 use crate::Config;
@@ -184,14 +185,53 @@ async fn load_likes(
     Ok(())
 }
 
+async fn get_profile_inaccessible_reason(
+    ctx: &CohostContext,
+    handle: &str,
+) -> anyhow::Result<Option<&'static str>> {
+    let login = ctx.login_logged_in().await?;
+    if !login.logged_in {
+        bail!("looks like your login session expired. please log in again");
+    }
+
+    let page = ctx
+        .project_page_view(handle)
+        .await
+        .context("loading project page view data")?;
+
+    Ok(match page.can_access_permissions.can_read {
+        Permission::Allowed => None,
+        Permission::NotAllowed => Some("probably a private page"),
+        Permission::LogInFirst => bail!("log in again"),
+        Permission::Blocked => Some("you were blocked by this page"),
+    })
+}
+
 async fn load_profile_posts(
     ctx: &CohostContext,
     state: &Mutex<CurrentStateV1>,
     login: &LoginLoggedIn,
     project_id: u64,
     new_only: bool,
+    ignore_inaccessible: bool,
 ) -> anyhow::Result<()> {
     let project = ctx.project(project_id).await?;
+
+    if let Some(reason) = get_profile_inaccessible_reason(ctx, &project.handle).await? {
+        if ignore_inaccessible {
+            error!(
+                "\x1b[31;1m\n\ncannot load profile posts for @{}: {}\n\n\x1b[m",
+                project.handle, reason
+            );
+            return Ok(());
+        } else {
+            bail!(
+                "cannot load profile posts for @{}: {}",
+                project.handle,
+                reason
+            );
+        }
+    }
 
     if new_only {
         info!("loading new posts from @{}", project.handle);
@@ -1125,7 +1165,17 @@ pub async fn download(config: Config, db: SqliteConnection) {
         let new_only = has_all_posts && config.load_new_posts;
 
         if !has_all_posts || new_only {
-            ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
+            ok_or_quit(
+                load_profile_posts(
+                    &ctx,
+                    &state,
+                    &login,
+                    project,
+                    new_only,
+                    config.skip_inaccessible_profiles,
+                )
+                .await,
+            );
 
             ok_or_quit(ctx.db.vacuum().await);
         }
@@ -1150,7 +1200,17 @@ pub async fn download(config: Config, db: SqliteConnection) {
             let new_only = has_all_posts && config.load_new_posts;
 
             if !has_all_posts || new_only {
-                ok_or_quit(load_profile_posts(&ctx, &state, &login, project, new_only).await);
+                ok_or_quit(
+                    load_profile_posts(
+                        &ctx,
+                        &state,
+                        &login,
+                        project,
+                        new_only,
+                        config.skip_inaccessible_profiles,
+                    )
+                    .await,
+                );
 
                 ok_or_quit(ctx.db.vacuum().await);
             }

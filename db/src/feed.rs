@@ -1,3 +1,4 @@
+use crate::comment::Permission;
 use crate::context::CohostContext;
 use crate::post::PostFromCohost;
 use anyhow::{anyhow, Context};
@@ -70,6 +71,28 @@ struct TaggedPostFeedContainer {
     tagged_post_feed: TaggedPostsFeed,
 }
 
+// Not a feed, but this is the file where all the others of this type are
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectPageView {
+    pub can_access_permissions: ProjectCanAccessPermissions,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectCanAccessPermissions {
+    pub can_read: Permission,
+    pub can_interact: Permission,
+    pub can_share: Permission,
+    pub can_edit: Permission,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectPageViewContainer {
+    #[serde(rename = "project-page-view")]
+    project_page_view: ProjectPageView,
+}
+
 impl CohostContext {
     pub async fn load_liked_posts(
         &self,
@@ -136,5 +159,24 @@ impl CohostContext {
             .context("parsing __COHOST_LOADER_STATE__ on tagged posts page")?;
 
         Ok(data.tagged_post_feed)
+    }
+
+    pub async fn project_page_view(&self, handle: &str) -> anyhow::Result<ProjectPageView> {
+        let url = Url::parse(&format!("https://cohost.org/{handle}"))?;
+
+        let html = self
+            .get_text(url)
+            .await
+            .context("loading project page view")?;
+
+        let doc = kuchikiki::parse_html().one(html);
+        let script = doc
+            .select_first("script#__COHOST_LOADER_STATE__")
+            .map_err(|()| anyhow!("could not find __COHOST_LOADER_STATE__ in project page view"))?;
+
+        let data: ProjectPageViewContainer = serde_json::from_str(&script.text_contents())
+            .context("parsing __COHOST_LOADER_STATE__ on project page view")?;
+
+        Ok(data.project_page_view)
     }
 }

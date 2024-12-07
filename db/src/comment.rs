@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 pub struct CommentFromCohost {
     pub poster: Option<ProjectFromCohost>,
     pub comment: InnerComment,
-    pub can_edit: CommentPermission,
-    pub can_hide: CommentPermission,
-    pub can_interact: CommentPermission,
+    pub can_edit: Permission,
+    pub can_hide: Permission,
+    pub can_interact: Permission,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,7 +28,7 @@ pub struct InnerComment {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum CommentPermission {
+pub enum Permission {
     Allowed,
     NotAllowed,
     LogInFirst,

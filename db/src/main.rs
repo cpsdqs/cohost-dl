@@ -98,6 +98,8 @@ pub struct Config {
     pub load_comment_resources: bool,
     #[serde(default)]
     pub forget_missing_url_files: bool,
+    #[serde(default)]
+    pub skip_inaccessible_profiles: bool,
     pub server_port: u16,
 }
 
@@ -114,7 +116,10 @@ fn main() {
                 .build()
                 .unwrap();
             rt.block_on(main_impl());
-        }).unwrap().join().unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 async fn main_impl() {

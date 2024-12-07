@@ -1,4 +1,4 @@
-use crate::comment::{CommentFromCohost, CommentPermission, InnerComment};
+use crate::comment::{CommentFromCohost, InnerComment, Permission};
 use crate::data::{Database, DbDataError};
 use crate::post::{LimitedVisibilityReason, PostAstMap, PostFromCohost, PostState};
 use crate::project::ProjectFromCohost;
@@ -211,16 +211,16 @@ pub async fn cohost_api_comments(
                 posted_at_iso: comment.published_at,
             },
             can_edit: if is_viewer_comment {
-                CommentPermission::Allowed
+                Permission::Allowed
             } else {
-                CommentPermission::NotAllowed
+                Permission::NotAllowed
             },
             can_hide: if is_editor {
-                CommentPermission::Allowed
+                Permission::Allowed
             } else {
-                CommentPermission::NotAllowed
+                Permission::NotAllowed
             },
-            can_interact: CommentPermission::Allowed,
+            can_interact: Permission::Allowed,
         };
         by_parent
             .entry(comment.in_reply_to_id.unwrap_or_default())
