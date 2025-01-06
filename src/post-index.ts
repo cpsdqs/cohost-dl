@@ -210,10 +210,27 @@ async function readPostFileBatch(
     const searchTreeIndex: Record<number, number[]> = {};
 
     const addPost = (post: IPost, tree: number) => {
+        let postExtra = '';
+        for (const block of post.blocks) {
+            if (block.type === 'ask') {
+                let askingProjectName = '';
+                if (block.ask.askingProject) {
+                    askingProjectName = `@${block.ask.askingProject.handle}`;
+                } else if (block.ask.anon) {
+                    askingProjectName = block.ask.loggedIn ? 'Anonymous User' : 'Anonymous Guest';
+                }
+
+                postExtra += [
+                    `${askingProjectName} asked:`,
+                    block.ask.content,
+                ].join('\n');
+            }
+        }
+
         indexablePosts.push({
             id: post.postId,
             author: post.postingProject.handle,
-            contents: [post.headline, post.plainTextBody].join("\n"),
+            contents: [post.headline, postExtra, post.plainTextBody].join("\n"),
             tags: post.tags.join("\n"),
             published: post.publishedAt,
             flags: flagsForPost(post),
