@@ -69,6 +69,8 @@ pub struct MarkdownRenderer {
 
 impl MarkdownRenderer {
     pub fn new(renderers: usize) -> Self {
+        JsRuntime::init_platform(None, true);
+
         // is there a better solution to this? I am not going to find out right now
         let queue = Arc::new(Mutex::new(VecDeque::<QueueItem>::new()));
         let signal = Arc::new(Condvar::new());
