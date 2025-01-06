@@ -423,7 +423,8 @@ impl Database {
         let existing: Option<DbPost> = posts.filter(id.eq(post.id)).first(db).optional()?;
 
         let Some(existing) = existing else {
-            return Ok(false);
+            // obviously better if we didn't have one at all
+            return Ok(true);
         };
         let existing_data = existing.data()?;
 
@@ -629,6 +630,25 @@ impl Database {
         Ok((id as u64, handle))
     }
 
+    pub async fn total_comment_count(&self) -> anyhow::Result<u64> {
+        use crate::schema::comments::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        let result: i64 = comments.count().get_result(db)?;
+        Ok(result as u64)
+    }
+
+    pub async fn comment(&self, comment_id: &str) -> QueryResult<DbComment> {
+        use crate::schema::comments::dsl::*;
+
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        comments.filter(id.eq(comment_id)).first(db)
+    }
+
     pub async fn get_comments(&self, the_post_id: u64) -> QueryResult<Vec<DbComment>> {
         use crate::schema::comments::dsl::*;
 
@@ -639,6 +659,14 @@ impl Database {
             .filter(post_id.eq(the_post_id as i32))
             .order_by(published_at)
             .load(db)
+    }
+
+    pub async fn get_comment_ids(&self, offset: i64, limit: i64) -> QueryResult<Vec<String>> {
+        use crate::schema::comments::dsl::*;
+        let mut db = self.db.lock().await;
+        let db = &mut *db;
+
+        comments.select(id).offset(offset).limit(limit).load(db)
     }
 
     pub async fn has_comment(&self, comment_id: &str) -> QueryResult<bool> {

@@ -58,9 +58,13 @@ enum Commands {
     /// Imports cohost-dl 1 data (interactive)
     ImportCohostDl1,
     /// Imports data from another cohost-dl 2 download
-    ExperimentalMergeData {
+    ///
+    /// This will copy posts, comments, and files from the other download into the current download.
+    MergeData {
         /// Other database file
         database: String,
+        /// Other file data directory
+        files: String,
     },
 }
 
@@ -161,8 +165,18 @@ async fn main_impl() {
                     process::exit(1);
                 }
             }
-            Commands::ExperimentalMergeData { database: other_db } => {
-                if let Err(e) = merge::merge(&Database::new(db), &other_db).await {
+            Commands::MergeData {
+                database: other_db,
+                files: other_root_dir,
+            } => {
+                if let Err(e) = merge::merge(
+                    &Database::new(db),
+                    &other_db,
+                    &PathBuf::from(config.root_dir),
+                    &PathBuf::from(other_root_dir),
+                )
+                .await
+                {
                     eprintln!("{e:?}");
                     process::exit(1);
                 }
