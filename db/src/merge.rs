@@ -1,6 +1,6 @@
 use crate::data::{Database, DbPost};
 use crate::dl::long_progress_style;
-use anyhow::{bail, Context};
+use anyhow::Context;
 use deno_core::url::Url;
 use diesel::{Connection, SqliteConnection};
 use indicatif::ProgressBar;
@@ -105,6 +105,8 @@ pub async fn merge(
     progress.set_style(long_progress_style());
     progress.set_message("copying files");
 
+    let mut file_errors = Vec::new();
+
     for offset in (0..).map(|i| i * 1000) {
         let files = other_db.get_url_files_batch(offset, 1000).await?;
         if files.is_empty() {
@@ -122,10 +124,8 @@ pub async fn merge(
                 progress.set_message(format!("{}", path.display()));
 
                 if !from_path.exists() {
-                    bail!(
-                        "error copying a file because it doesn't exist:\n{}",
-                        from_path.display()
-                    );
+                    file_errors.push(format!("missing file {}", from_path.display()));
+                    continue;
                 }
                 if to_path.exists() {
                     // probably pointing at the same files directory
@@ -155,6 +155,13 @@ pub async fn merge(
         info!("1 file copied");
     } else {
         info!("{files_inserted} files copied");
+    }
+
+    if !file_errors.is_empty() {
+        error!("encountered errors while copying files:");
+        for err in file_errors {
+            error!("{err}");
+        }
     }
 
     info!("Done");
